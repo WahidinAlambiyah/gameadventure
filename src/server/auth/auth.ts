@@ -38,6 +38,9 @@ export const auth = betterAuth({
   advanced: {
     cookiePrefix: "bacangaji",
     useSecureCookies: env.APP_ENV === "production",
+    database: {
+      generateId: "uuid"
+    },
     defaultCookieAttributes: {
       sameSite: "lax",
       httpOnly: true,
