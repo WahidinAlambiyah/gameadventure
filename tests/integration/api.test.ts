@@ -33,6 +33,7 @@ describe("implemented API endpoints", () => {
       new Request("http://localhost/api/v1/me", {
         headers: {
           "x-test-user-id": "user-1",
+          "x-test-user-name": "Parent User",
           "x-test-user-email": "parent@example.test",
           "x-test-roles": "PARENT",
           "x-test-permissions": "child:read-own"
@@ -42,6 +43,7 @@ describe("implemented API endpoints", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(body.data.name).toBe("Parent User");
     expect(body.data.email).toBe("parent@example.test");
     expect(body.data).not.toHaveProperty("session");
     expect(body.data).not.toHaveProperty("tokenHash");
@@ -119,6 +121,23 @@ describe("implemented API endpoints", () => {
     expect(response.status).toBe(403);
   });
 
+  it("rejects parent bootstrap for unrelated non-parent roles", async () => {
+    const response = await bootstrapParent(
+      new Request("http://localhost/api/v1/auth/bootstrap-parent", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-test-user-id": "editor-1",
+          "x-test-user-email": "editor@example.test",
+          "x-test-roles": "CONTENT_EDITOR"
+        },
+        body: JSON.stringify({ displayName: "Editor User" })
+      })
+    );
+
+    expect(response.status).toBe(403);
+  });
+
   it("retries parent bootstrap from protected parent entry after interrupted registration", async () => {
     const response = await createChild(
       new Request("http://localhost/api/v1/children", {
@@ -152,7 +171,7 @@ describe("implemented API endpoints", () => {
           nickname: "Alya",
           ageRange: "6-8",
           avatarKey: "starter-star",
-          learningPreferences: { starterTrack: "sastra-nusantara" }
+          learningPreferences: { focus: "both" }
         })
       })
     );
@@ -191,7 +210,7 @@ describe("implemented API endpoints", () => {
     );
     const body = await response.json();
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(422);
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 

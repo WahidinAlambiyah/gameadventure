@@ -9,6 +9,7 @@ export async function GET(request: Request) {
 
     return ok({
       id: user.id,
+      name: user.name ?? null,
       email: user.email,
       roles: user.roles,
       permissions: user.permissions,

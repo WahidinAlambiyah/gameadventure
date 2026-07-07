@@ -22,7 +22,7 @@ export const loginParentSchema = z
 
 export const createChildProfileSchema = z
   .object({
-    nickname: z.string().trim().min(2).max(40),
+    nickname: z.string().trim().min(2).max(30),
     birthYear: z
       .number()
       .int()
@@ -32,12 +32,15 @@ export const createChildProfileSchema = z
     ageRange: z.enum(["3-5", "6-8", "9-12"]).optional(),
     avatarKey: z.enum(["starter-star", "forest-reader", "moon-scout"]).optional(),
     learningPreferences: z
-      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-      .default({})
+      .object({
+        focus: z.enum(["reading", "hijaiyah", "both"])
+      })
+      .strict()
+      .default({ focus: "both" })
   })
   .strict()
-  .refine((value) => value.birthYear !== undefined || value.ageRange !== undefined, {
-    message: "Provide either birth year or age range.",
+  .refine((value) => (value.birthYear === undefined) !== (value.ageRange === undefined), {
+    message: "Provide exactly one of birth year or age range.",
     path: ["ageRange"]
   });
 

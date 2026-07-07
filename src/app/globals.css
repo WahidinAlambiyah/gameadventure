@@ -95,6 +95,13 @@ a {
   font-weight: 700;
 }
 
+.auth-form .checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
 .auth-form input,
 .auth-form select {
   min-height: 44px;
@@ -103,6 +110,26 @@ a {
   background: white;
   padding: 10px 12px;
   color: var(--foreground);
+}
+
+.auth-form input[type="checkbox"],
+.auth-form input[type="radio"] {
+  min-height: auto;
+  width: 18px;
+  height: 18px;
+}
+
+.form-fieldset {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #cfd8d4;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.form-fieldset legend {
+  padding: 0 6px;
+  font-weight: 700;
 }
 
 .form-grid {

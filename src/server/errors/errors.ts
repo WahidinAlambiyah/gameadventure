@@ -20,7 +20,7 @@ export class AppError extends Error {
 
 export class ValidationError extends AppError {
   constructor(message = "The request is invalid.") {
-    super("VALIDATION_ERROR", message, 400);
+    super("VALIDATION_ERROR", message, 422);
   }
 }
 

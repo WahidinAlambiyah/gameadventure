@@ -5,23 +5,26 @@ import { useState } from "react";
 
 export function ChildProfileForm() {
   const router = useRouter();
+  const [ageInputMode, setAgeInputMode] = useState<"ageRange" | "birthYear">("ageRange");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
     setError(null);
     setPending(true);
 
     const form = new FormData(event.currentTarget);
-    const birthYearValue = String(form.get("birthYear") ?? "");
+    const birthYearValue = ageInputMode === "birthYear" ? String(form.get("birthYear") ?? "") : "";
     const payload = {
       nickname: String(form.get("nickname") ?? ""),
-      ageRange: String(form.get("ageRange") ?? "") || undefined,
+      ageRange:
+        ageInputMode === "ageRange" ? String(form.get("ageRange") ?? "") || undefined : undefined,
       birthYear: birthYearValue ? Number(birthYearValue) : undefined,
       avatarKey: String(form.get("avatarKey") ?? "") || undefined,
       learningPreferences: {
-        starterTrack: String(form.get("starterTrack") ?? "sastra-nusantara")
+        focus: String(form.get("learningFocus") ?? "both")
       }
     };
 
@@ -43,15 +46,38 @@ export function ChildProfileForm() {
   }
 
   return (
-    <form className="auth-form" onSubmit={onSubmit}>
+    <form className="auth-form" onSubmit={onSubmit} aria-describedby="child-profile-error">
       <label>
         <span>Nickname</span>
-        <input name="nickname" required minLength={2} maxLength={40} />
+        <input name="nickname" required minLength={2} maxLength={30} />
       </label>
+      <fieldset className="form-fieldset">
+        <legend>Age input</legend>
+        <label className="checkbox-row">
+          <input
+            checked={ageInputMode === "ageRange"}
+            name="ageInputMode"
+            onChange={() => setAgeInputMode("ageRange")}
+            type="radio"
+            value="ageRange"
+          />
+          <span>Use age range</span>
+        </label>
+        <label className="checkbox-row">
+          <input
+            checked={ageInputMode === "birthYear"}
+            name="ageInputMode"
+            onChange={() => setAgeInputMode("birthYear")}
+            type="radio"
+            value="birthYear"
+          />
+          <span>Use birth year</span>
+        </label>
+      </fieldset>
       <div className="form-grid">
         <label>
           <span>Age range</span>
-          <select name="ageRange" defaultValue="6-8">
+          <select name="ageRange" defaultValue="6-8" disabled={ageInputMode !== "ageRange"}>
             <option value="3-5">3-5</option>
             <option value="6-8">6-8</option>
             <option value="9-12">9-12</option>
@@ -59,7 +85,13 @@ export function ChildProfileForm() {
         </label>
         <label>
           <span>Birth year</span>
-          <input name="birthYear" inputMode="numeric" pattern="[0-9]*" />
+          <input
+            name="birthYear"
+            disabled={ageInputMode !== "birthYear"}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            required={ageInputMode === "birthYear"}
+          />
         </label>
       </div>
       <label>
@@ -71,13 +103,18 @@ export function ChildProfileForm() {
         </select>
       </label>
       <label>
-        <span>Starter track</span>
-        <select name="starterTrack" defaultValue="sastra-nusantara">
-          <option value="sastra-nusantara">SastraNusantara</option>
-          <option value="hijaiyah-island">HijaiyahIsland</option>
+        <span>Learning preference</span>
+        <select name="learningFocus" defaultValue="both">
+          <option value="reading">Reading</option>
+          <option value="hijaiyah">Hijaiyah</option>
+          <option value="both">Both</option>
         </select>
       </label>
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? (
+        <p className="form-error" id="child-profile-error" role="alert">
+          {error}
+        </p>
+      ) : null}
       <button className="app-button" disabled={pending} type="submit">
         {pending ? "Creating..." : "Create child profile"}
       </button>

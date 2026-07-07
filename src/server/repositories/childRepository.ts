@@ -1,4 +1,5 @@
 import "server-only";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/server/database/prisma";
 import type { CreateChildProfileInput } from "@/features/parent/validation";
@@ -14,6 +15,8 @@ export type ChildSummary = {
   learningPreferences?: unknown;
   deletedAt?: Date | null;
 };
+
+type ChildDbClient = Pick<PrismaClient, "$transaction">;
 
 const testChildren = new Map<string, ChildSummary[]>();
 const testChildLocks = new Map<string, Promise<void>>();
@@ -127,9 +130,10 @@ export async function listChildrenByParentId(parentProfileId: string) {
 
 export async function createChildForParent(
   parentProfileId: string,
-  input: CreateChildProfileInput
+  input: CreateChildProfileInput,
+  db: ChildDbClient = prisma
 ) {
-  if (process.env.APP_ENV === "test") {
+  if (process.env.APP_ENV === "test" && db === prisma) {
     return withTestChildLock(parentProfileId, async () => {
       const children = getTestChildren(parentProfileId);
       const activeChildren = children.filter((child) => !child.deletedAt);
@@ -152,7 +156,7 @@ export async function createChildForParent(
   }
 
   try {
-    return await prisma.$transaction(
+    return await db.$transaction(
       async (tx) => {
         await tx.$queryRaw`
           SELECT pg_advisory_xact_lock(hashtextextended(${parentProfileId}, 0))
