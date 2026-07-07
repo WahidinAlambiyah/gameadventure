@@ -4,7 +4,7 @@ import { GET as me } from "@/app/api/v1/me/route";
 import { GET as adminRoles } from "@/app/api/v1/admin/roles/route";
 import { GET as listChildren, POST as createChild } from "@/app/api/v1/children/route";
 import { POST as bootstrapParent } from "@/app/api/v1/auth/bootstrap-parent/route";
-import { resetTestChildren } from "@/server/repositories/childRepository";
+import { resetTestChildren, seedTestChild } from "@/server/repositories/childRepository";
 
 const parentHeaders = {
   "x-test-user-id": "user-1",
@@ -43,6 +43,9 @@ describe("implemented API endpoints", () => {
 
     expect(response.status).toBe(200);
     expect(body.data.email).toBe("parent@example.test");
+    expect(body.data).not.toHaveProperty("session");
+    expect(body.data).not.toHaveProperty("tokenHash");
+    expect(body.data).not.toHaveProperty("valueHash");
   });
 
   it("rejects unauthenticated profile access", async () => {
@@ -97,6 +100,44 @@ describe("implemented API endpoints", () => {
     expect(response.status).toBe(200);
     expect(body.data.rolesAssigned).toEqual(["PARENT"]);
     expect(body.data.rolesAssigned).not.toContain("ADMIN");
+  });
+
+  it("rejects parent bootstrap for privileged users", async () => {
+    const response = await bootstrapParent(
+      new Request("http://localhost/api/v1/auth/bootstrap-parent", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-test-user-id": "admin-1",
+          "x-test-user-email": "admin@example.test",
+          "x-test-roles": "ADMIN"
+        },
+        body: JSON.stringify({ displayName: "Admin User" })
+      })
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("retries parent bootstrap from protected parent entry after interrupted registration", async () => {
+    const response = await createChild(
+      new Request("http://localhost/api/v1/children", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-test-user-id": "new-user-1",
+          "x-test-user-email": "new-parent@example.test"
+        },
+        body: JSON.stringify({
+          nickname: "Alya",
+          ageRange: "6-8"
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.data.child.parentProfileId).toBe("parent-1");
   });
 
   it("creates and lists a parent-owned child profile", async () => {
@@ -186,6 +227,92 @@ describe("implemented API endpoints", () => {
 
     expect(second.status).toBe(409);
     expect(body.error.code).toBe("CONFLICT");
+  });
+
+  it("allows exactly one active child under simultaneous create requests", async () => {
+    const payload = {
+      nickname: "Alya",
+      ageRange: "6-8",
+      avatarKey: "starter-star"
+    };
+
+    const requests = await Promise.all([
+      createChild(
+        new Request("http://localhost/api/v1/children", {
+          method: "POST",
+          headers: {
+            ...parentHeaders,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        })
+      ),
+      createChild(
+        new Request("http://localhost/api/v1/children", {
+          method: "POST",
+          headers: {
+            ...parentHeaders,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ ...payload, nickname: "Bima" })
+        })
+      )
+    ]);
+
+    const statuses = requests.map((response) => response.status).sort();
+    expect(statuses).toEqual([201, 409]);
+
+    const listed = await listChildren(
+      new Request("http://localhost/api/v1/children", {
+        headers: parentHeaders
+      })
+    );
+    const body = await listed.json();
+
+    expect(body.data.children).toHaveLength(1);
+  });
+
+  it("does not show or count soft-deleted children as active MVP children", async () => {
+    seedTestChild({
+      id: "deleted-child",
+      parentProfileId: "parent-1",
+      nickname: "Deleted",
+      birthYear: null,
+      avatarKey: "starter-star",
+      deletedAt: new Date()
+    });
+
+    const listedBefore = await listChildren(
+      new Request("http://localhost/api/v1/children", {
+        headers: parentHeaders
+      })
+    );
+    const listedBeforeBody = await listedBefore.json();
+    expect(listedBeforeBody.data.children).toHaveLength(0);
+
+    const created = await createChild(
+      new Request("http://localhost/api/v1/children", {
+        method: "POST",
+        headers: {
+          ...parentHeaders,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          nickname: "Alya",
+          ageRange: "6-8"
+        })
+      })
+    );
+
+    expect(created.status).toBe(201);
+
+    const listedAfter = await listChildren(
+      new Request("http://localhost/api/v1/children", {
+        headers: parentHeaders
+      })
+    );
+    const listedAfterBody = await listedAfter.json();
+    expect(listedAfterBody.data.children).toHaveLength(1);
   });
 
   it("does not let admin-only users create parent children", async () => {

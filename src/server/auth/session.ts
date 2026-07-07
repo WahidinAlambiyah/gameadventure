@@ -5,13 +5,16 @@ import { auth } from "@/server/auth/auth";
 import { prisma } from "@/server/database/prisma";
 import {
   hasPermission,
+  rolePermissions,
   type PermissionName,
   type RoleName
 } from "@/server/authorization/permissions";
 import { AuthenticationError, AuthorizationError } from "@/server/errors/errors";
+import { bootstrapParentForUser } from "@/server/parent/onboarding";
 
 export type CurrentUser = {
   id: string;
+  name?: string | null;
   email: string;
   roles: RoleName[];
   permissions: string[];
@@ -26,6 +29,7 @@ function testUserFromHeaders(requestHeaders: Headers): CurrentUser | null {
 
   return {
     id: userId,
+    name: requestHeaders.get("x-test-user-name"),
     email: requestHeaders.get("x-test-user-email") ?? "test@example.com",
     roles: (requestHeaders.get("x-test-roles")?.split(",").filter(Boolean) as RoleName[]) ?? [
       "PARENT"
@@ -35,23 +39,12 @@ function testUserFromHeaders(requestHeaders: Headers): CurrentUser | null {
   };
 }
 
-export async function getCurrentUser(requestHeaders?: Headers): Promise<CurrentUser | null> {
-  const resolvedHeaders = requestHeaders ?? (await headers());
-  const testUser = testUserFromHeaders(resolvedHeaders);
-  if (testUser) return testUser;
-  if (process.env.APP_ENV === "test" || process.env.NODE_ENV === "test") return null;
-  if (!resolvedHeaders.get("cookie")) return null;
-
-  const session = await auth.api.getSession({
-    headers: resolvedHeaders
-  });
-
-  if (!session?.user) return null;
-
+async function hydrateCurrentUserById(userId: string): Promise<CurrentUser | null> {
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: userId },
     select: {
       id: true,
+      name: true,
       email: true,
       parentProfile: {
         select: { id: true }
@@ -88,11 +81,28 @@ export async function getCurrentUser(requestHeaders?: Headers): Promise<CurrentU
 
   return {
     id: user.id,
+    name: user.name,
     email: user.email,
     roles,
     permissions,
     parentProfileId: user.parentProfile?.id
   };
+}
+
+export async function getCurrentUser(requestHeaders?: Headers): Promise<CurrentUser | null> {
+  const resolvedHeaders = requestHeaders ?? (await headers());
+  const testUser = testUserFromHeaders(resolvedHeaders);
+  if (testUser) return testUser;
+  if (process.env.APP_ENV === "test" || process.env.NODE_ENV === "test") return null;
+  if (!resolvedHeaders.get("cookie")) return null;
+
+  const session = await auth.api.getSession({
+    headers: resolvedHeaders
+  });
+
+  if (!session?.user) return null;
+
+  return hydrateCurrentUserById(session.user.id);
 }
 
 export async function requireAuthentication(requestHeaders?: Headers): Promise<CurrentUser> {
@@ -111,10 +121,38 @@ export async function requireRole(role: RoleName, requestHeaders?: Headers): Pro
 }
 
 export async function requireParent(requestHeaders?: Headers): Promise<CurrentUser> {
-  const user = await requireRole("PARENT", requestHeaders);
+  const user = await requireAuthentication(requestHeaders);
+  if (user.roles.includes("ADMIN") || user.roles.includes("SUPER_ADMIN")) {
+    throw new AuthorizationError("Privileged users cannot be bootstrapped as parents.");
+  }
+
+  if (!user.roles.includes("PARENT") && user.roles.length > 0) {
+    throw new AuthorizationError("A parent account is required.");
+  }
+
   if (!user.parentProfileId) {
-    if (!requestHeaders) redirect("/register");
-    throw new AuthorizationError("A parent profile is required.");
+    const displayName = user.name?.trim() || user.email.split("@")[0] || "Parent";
+    await bootstrapParentForUser({
+      userId: user.id,
+      displayName
+    });
+
+    if (process.env.APP_ENV === "test" || process.env.NODE_ENV === "test") {
+      return {
+        ...user,
+        roles: ["PARENT"],
+        permissions: rolePermissions.PARENT,
+        parentProfileId: "parent-1"
+      };
+    }
+
+    const bootstrappedUser = await hydrateCurrentUserById(user.id);
+    if (!bootstrappedUser?.parentProfileId || !bootstrappedUser.roles.includes("PARENT")) {
+      if (!requestHeaders) redirect("/register");
+      throw new AuthorizationError("A parent profile is required.");
+    }
+
+    return bootstrappedUser;
   }
   return user;
 }

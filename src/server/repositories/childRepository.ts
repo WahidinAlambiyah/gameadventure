@@ -12,9 +12,11 @@ export type ChildSummary = {
   ageRange?: string | null;
   avatarKey: string | null;
   learningPreferences?: unknown;
+  deletedAt?: Date | null;
 };
 
 const testChildren = new Map<string, ChildSummary[]>();
+const testChildLocks = new Map<string, Promise<void>>();
 
 function getTestChildren(parentProfileId: string) {
   if (!testChildren.has(parentProfileId)) testChildren.set(parentProfileId, []);
@@ -23,6 +25,7 @@ function getTestChildren(parentProfileId: string) {
 
 export function resetTestChildren() {
   testChildren.clear();
+  testChildLocks.clear();
 }
 
 export function seedTestChild(child: ChildSummary) {
@@ -39,6 +42,29 @@ function sanitizeChild(child: ChildSummary) {
     avatarKey: child.avatarKey,
     learningPreferences: child.learningPreferences ?? {}
   };
+}
+
+async function withTestChildLock<T>(parentProfileId: string, action: () => Promise<T> | T) {
+  const previousLock = testChildLocks.get(parentProfileId) ?? Promise.resolve();
+  let releaseCurrentLock: (() => void) | undefined;
+  const currentLock = previousLock.then(
+    () =>
+      new Promise<void>((resolve) => {
+        releaseCurrentLock = resolve;
+      })
+  );
+
+  testChildLocks.set(parentProfileId, currentLock);
+  await previousLock;
+
+  try {
+    return await action();
+  } finally {
+    releaseCurrentLock?.();
+    if (testChildLocks.get(parentProfileId) === currentLock) {
+      testChildLocks.delete(parentProfileId);
+    }
+  }
 }
 
 export async function findChildByIdAndParentId(childId: string, parentProfileId: string) {
@@ -76,7 +102,9 @@ export async function findChildByIdAndParentId(childId: string, parentProfileId:
 
 export async function listChildrenByParentId(parentProfileId: string) {
   if (process.env.APP_ENV === "test") {
-    return getTestChildren(parentProfileId).map(sanitizeChild);
+    return getTestChildren(parentProfileId)
+      .filter((child) => !child.deletedAt)
+      .map(sanitizeChild);
   }
 
   return prisma.childProfile.findMany({
@@ -102,24 +130,34 @@ export async function createChildForParent(
   input: CreateChildProfileInput
 ) {
   if (process.env.APP_ENV === "test") {
-    const children = getTestChildren(parentProfileId);
-    if (children.length > 0) throw new ConflictError("MVP supports one active child profile.");
-    const child: ChildSummary = {
-      id: `test-child-${children.length + 1}`,
-      parentProfileId,
-      nickname: input.nickname,
-      birthYear: input.birthYear ?? null,
-      ageRange: input.ageRange ?? null,
-      avatarKey: input.avatarKey ?? "starter-star",
-      learningPreferences: input.learningPreferences
-    };
-    children.push(child);
-    return sanitizeChild(child);
+    return withTestChildLock(parentProfileId, async () => {
+      const children = getTestChildren(parentProfileId);
+      const activeChildren = children.filter((child) => !child.deletedAt);
+      if (activeChildren.length > 0) {
+        throw new ConflictError("MVP supports one active child profile.");
+      }
+
+      const child: ChildSummary = {
+        id: `test-child-${children.length + 1}`,
+        parentProfileId,
+        nickname: input.nickname,
+        birthYear: input.birthYear ?? null,
+        ageRange: input.ageRange ?? null,
+        avatarKey: input.avatarKey ?? "starter-star",
+        learningPreferences: input.learningPreferences
+      };
+      children.push(child);
+      return sanitizeChild(child);
+    });
   }
 
   try {
     return await prisma.$transaction(
       async (tx) => {
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(hashtextextended(${parentProfileId}, 0))
+        `;
+
         const activeChildren = await tx.childProfile.count({
           where: {
             parentProfileId,
