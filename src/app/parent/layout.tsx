@@ -1,10 +1,10 @@
 import { ParentNavigation } from "@/components/parent/ParentNavigation";
-import { requireAuthentication } from "@/server/auth/session";
+import { requireParent } from "@/server/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function ParentLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  await requireAuthentication();
+  await requireParent();
 
   return (
     <div className="min-h-screen bg-[#fffaf1]">

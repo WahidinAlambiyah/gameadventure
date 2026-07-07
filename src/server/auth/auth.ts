@@ -12,7 +12,9 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false
+    requireEmailVerification: false,
+    minPasswordLength: 12,
+    maxPasswordLength: 128
   },
   socialProviders:
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
@@ -24,12 +26,23 @@ export const auth = betterAuth({
         }
       : undefined,
   session: {
+    fields: {
+      token: "tokenHash"
+    },
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24
+  },
+  verification: {
+    fields: {
+      value: "valueHash"
+    }
   },
   advanced: {
     cookiePrefix: "bacangaji",
     useSecureCookies: env.APP_ENV === "production",
+    database: {
+      generateId: "uuid"
+    },
     defaultCookieAttributes: {
       sameSite: "lax",
       httpOnly: true,

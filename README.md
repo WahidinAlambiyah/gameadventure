@@ -109,9 +109,11 @@ For Cloudflare, use DNS-only records for the Vercel custom domain unless a revie
 Implemented foundations:
 
 - App shell and route placeholders.
-- Better Auth route mounting.
-- Custom RBAC helpers.
-- Ownership-scoped child endpoint.
+- Better Auth email/password route mounting and parent auth UI.
+- Parent onboarding bootstrap with default settings and `PARENT` role assignment.
+- Custom RBAC helpers with session role and permission hydration.
+- Ownership-scoped child profile list/create/read endpoints.
+- One active MVP child profile per parent account.
 - Prisma schema and initial migration.
 - Ledger-based reward and energy schema.
 - Parent PIN hashing utility.
