@@ -11,3 +11,4 @@ test-results
 *.tsbuildinfo
 dist
 build
+src/generated/prisma

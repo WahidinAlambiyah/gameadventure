@@ -1,5 +1,9 @@
 generator client {
-  provider = "prisma-client-js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
 }
 
 datasource db {
@@ -50,13 +54,13 @@ enum EnergyTransactionType {
 }
 
 model User {
-  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name          String?
-  email         String          @unique
-  emailVerified Boolean         @default(false)
+  email         String         @unique
+  emailVerified Boolean        @default(false)
   image         String?
-  createdAt     DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime        @updatedAt @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(6)
   accounts      Account[]
   sessions      Session[]
   parentProfile ParentProfile?
@@ -117,65 +121,65 @@ model Verification {
 }
 
 model ParentProfile {
-  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId           String                   @unique @db.Uuid
-  displayName      String
-  timezone         String                   @default("Asia/Jakarta")
-  createdAt        DateTime                 @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime                 @updatedAt @db.Timestamptz(6)
-  deletedAt        DateTime?                @db.Timestamptz(6)
-  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  securitySetting  ParentSecuritySetting?
-  parentalSetting  ParentalSetting?
-  children         ChildProfile[]
-  dailyPlayUsages  DailyPlayUsage[]
-  rewardLedgers    RewardLedger[]
-  energyLedgers    EnergyLedger[]
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String                 @unique @db.Uuid
+  displayName     String
+  timezone        String                 @default("Asia/Jakarta")
+  createdAt       DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime               @updatedAt @db.Timestamptz(6)
+  deletedAt       DateTime?              @db.Timestamptz(6)
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  securitySetting ParentSecuritySetting?
+  parentalSetting ParentalSetting?
+  children        ChildProfile[]
+  dailyPlayUsages DailyPlayUsage[]
+  rewardLedgers   RewardLedger[]
+  energyLedgers   EnergyLedger[]
 
   @@index([userId])
   @@schema("bacangaji")
 }
 
 model ParentSecuritySetting {
-  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parentProfileId         String        @unique @db.Uuid
-  pinHash                 String?
-  failedPinAttempts       Int           @default(0)
-  pinLockedUntil          DateTime?     @db.Timestamptz(6)
-  lastPinVerifiedAt       DateTime?     @db.Timestamptz(6)
-  createdAt               DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime      @updatedAt @db.Timestamptz(6)
-  parentProfile           ParentProfile @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentProfileId   String        @unique @db.Uuid
+  pinHash           String?
+  failedPinAttempts Int           @default(0)
+  pinLockedUntil    DateTime?     @db.Timestamptz(6)
+  lastPinVerifiedAt DateTime?     @db.Timestamptz(6)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
+  parentProfile     ParentProfile @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
 
   @@schema("bacangaji")
 }
 
 model ParentalSetting {
-  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parentProfileId      String        @unique @db.Uuid
-  dailyLimitSeconds    Int           @default(1200)
-  timezone             String        @default("Asia/Jakarta")
-  energyEnabled        Boolean       @default(true)
-  parentOverrideUntil  DateTime?     @db.Timestamptz(6)
-  createdAt            DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt            DateTime      @updatedAt @db.Timestamptz(6)
-  parentProfile        ParentProfile @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentProfileId     String        @unique @db.Uuid
+  dailyLimitSeconds   Int           @default(1200)
+  timezone            String        @default("Asia/Jakarta")
+  energyEnabled       Boolean       @default(true)
+  parentOverrideUntil DateTime?     @db.Timestamptz(6)
+  createdAt           DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime      @updatedAt @db.Timestamptz(6)
+  parentProfile       ParentProfile @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
 
   @@schema("bacangaji")
 }
 
 model ChildProfile {
-  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parentProfileId     String             @db.Uuid
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentProfileId     String            @db.Uuid
   nickname            String
   birthYear           Int?
   ageRange            String?
   avatarKey           String?
-  learningPreferences Json               @default("{}")
-  createdAt           DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime           @updatedAt @db.Timestamptz(6)
-  deletedAt           DateTime?          @db.Timestamptz(6)
-  parentProfile       ParentProfile      @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
+  learningPreferences Json              @default("{}")
+  createdAt           DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(6)
+  deletedAt           DateTime?         @db.Timestamptz(6)
+  parentProfile       ParentProfile     @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
   gameSessions        GameSession[]
   attempts            QuestionAttempt[]
   levelProgress       LevelProgress[]
@@ -238,14 +242,14 @@ model RolePermission {
 }
 
 model LearningTrack {
-  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug        String         @unique
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String          @unique
   title       String
   description String?
-  status      ContentStatus  @default(DRAFT)
-  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime       @updatedAt @db.Timestamptz(6)
-  deletedAt   DateTime?      @db.Timestamptz(6)
+  status      ContentStatus   @default(DRAFT)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime?       @db.Timestamptz(6)
   zones       LearningZone[]
   levels      LearningLevel[]
   progress    TrackProgress[]
@@ -272,22 +276,22 @@ model LearningZone {
 }
 
 model LearningLevel {
-  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  trackId         String             @db.Uuid
-  zoneId          String             @db.Uuid
-  slug            String
-  title           String
-  sortOrder       Int                @default(0)
-  energyCost      Int                @default(1)
-  status          ContentStatus      @default(DRAFT)
-  createdAt       DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime           @updatedAt @db.Timestamptz(6)
-  deletedAt       DateTime?          @db.Timestamptz(6)
-  track           LearningTrack      @relation(fields: [trackId], references: [id], onDelete: Cascade)
-  zone            LearningZone       @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  lessons         LearningLesson[]
-  gameSessions    GameSession[]
-  levelProgress   LevelProgress[]
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  trackId       String           @db.Uuid
+  zoneId        String           @db.Uuid
+  slug          String
+  title         String
+  sortOrder     Int              @default(0)
+  energyCost    Int              @default(1)
+  status        ContentStatus    @default(DRAFT)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime?        @db.Timestamptz(6)
+  track         LearningTrack    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  zone          LearningZone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  lessons       LearningLesson[]
+  gameSessions  GameSession[]
+  levelProgress LevelProgress[]
 
   @@unique([trackId, slug])
   @@index([zoneId])
@@ -311,30 +315,30 @@ model LearningLesson {
 }
 
 model LearningQuestion {
-  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  lessonId       String            @db.Uuid
-  prompt         String
-  answerRule     Json              @default("{}")
-  sortOrder      Int               @default(0)
-  createdAt      DateTime          @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime          @updatedAt @db.Timestamptz(6)
-  lesson         LearningLesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  options        QuestionOption[]
-  attempts       QuestionAttempt[]
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lessonId   String            @db.Uuid
+  prompt     String
+  answerRule Json              @default("{}")
+  sortOrder  Int               @default(0)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
+  lesson     LearningLesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  options    QuestionOption[]
+  attempts   QuestionAttempt[]
 
   @@index([lessonId])
   @@schema("bacangaji")
 }
 
 model QuestionOption {
-  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  questionId String           @db.Uuid
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  questionId String            @db.Uuid
   label      String
   value      String
-  sortOrder  Int              @default(0)
-  createdAt  DateTime         @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime         @updatedAt @db.Timestamptz(6)
-  question   LearningQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  sortOrder  Int               @default(0)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime          @updatedAt @db.Timestamptz(6)
+  question   LearningQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
   attempts   QuestionAttempt[]
 
   @@index([questionId])
@@ -395,16 +399,16 @@ model QuestionAttempt {
 }
 
 model LevelProgress {
-  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  childProfileId   String        @db.Uuid
-  levelId          String        @db.Uuid
-  completedAt      DateTime?     @db.Timestamptz(6)
-  bestScore        Int           @default(0)
-  idempotencyKey   String?
-  createdAt        DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime      @updatedAt @db.Timestamptz(6)
-  childProfile     ChildProfile  @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
-  level            LearningLevel @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  childProfileId String        @db.Uuid
+  levelId        String        @db.Uuid
+  completedAt    DateTime?     @db.Timestamptz(6)
+  bestScore      Int           @default(0)
+  idempotencyKey String?
+  createdAt      DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(6)
+  childProfile   ChildProfile  @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
+  level          LearningLevel @relation(fields: [levelId], references: [id], onDelete: Cascade)
 
   @@unique([childProfileId, levelId])
   @@unique([idempotencyKey])
