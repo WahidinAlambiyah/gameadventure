@@ -8,7 +8,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "bacangaji", "bacangaji_audit"]
+  schemas  = ["gameadventure_auth", "gameadventure", "gameadventure_audit"]
 }
 
 enum RoleName {
@@ -21,7 +21,7 @@ enum RoleName {
   ADMIN
   SUPER_ADMIN
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 enum ContentStatus {
@@ -30,7 +30,7 @@ enum ContentStatus {
   PUBLISHED
   ARCHIVED
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 enum RewardTransactionType {
@@ -40,7 +40,7 @@ enum RewardTransactionType {
   ADMIN_ADJUSTMENT
   REVERSAL
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 enum EnergyTransactionType {
@@ -50,7 +50,7 @@ enum EnergyTransactionType {
   ADMIN_ADJUSTMENT
   REVERSAL
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model User {
@@ -66,7 +66,7 @@ model User {
   parentProfile ParentProfile?
   userRoles     UserRole[]
 
-  @@schema("auth")
+  @@schema("gameadventure_auth")
 }
 
 model Account {
@@ -87,7 +87,7 @@ model Account {
 
   @@unique([providerId, accountId])
   @@index([userId])
-  @@schema("auth")
+  @@schema("gameadventure_auth")
 }
 
 model Session {
@@ -104,7 +104,7 @@ model Session {
 
   @@index([userId])
   @@index([expiresAt])
-  @@schema("auth")
+  @@schema("gameadventure_auth")
 }
 
 model Verification {
@@ -117,7 +117,7 @@ model Verification {
 
   @@unique([identifier, valueHash])
   @@index([expiresAt])
-  @@schema("auth")
+  @@schema("gameadventure_auth")
 }
 
 model ParentProfile {
@@ -137,7 +137,7 @@ model ParentProfile {
   energyLedgers   EnergyLedger[]
 
   @@index([userId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model ParentSecuritySetting {
@@ -151,7 +151,7 @@ model ParentSecuritySetting {
   updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
   parentProfile     ParentProfile @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model ParentalSetting {
@@ -165,7 +165,7 @@ model ParentalSetting {
   updatedAt           DateTime      @updatedAt @db.Timestamptz(6)
   parentProfile       ParentProfile @relation(fields: [parentProfileId], references: [id], onDelete: Cascade)
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model ChildProfile {
@@ -189,7 +189,7 @@ model ChildProfile {
   energyLedgers       EnergyLedger[]
 
   @@index([parentProfileId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model Role {
@@ -201,7 +201,7 @@ model Role {
   userRoles       UserRole[]
   rolePermissions RolePermission[]
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model Permission {
@@ -212,7 +212,7 @@ model Permission {
   updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
   rolePermissions RolePermission[]
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model UserRole {
@@ -225,7 +225,7 @@ model UserRole {
 
   @@unique([userId, roleId])
   @@index([roleId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model RolePermission {
@@ -238,7 +238,7 @@ model RolePermission {
 
   @@unique([roleId, permissionId])
   @@index([permissionId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LearningTrack {
@@ -254,7 +254,7 @@ model LearningTrack {
   levels      LearningLevel[]
   progress    TrackProgress[]
 
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LearningZone {
@@ -272,7 +272,7 @@ model LearningZone {
 
   @@unique([trackId, slug])
   @@index([trackId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LearningLevel {
@@ -295,7 +295,7 @@ model LearningLevel {
 
   @@unique([trackId, slug])
   @@index([zoneId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LearningLesson {
@@ -311,7 +311,7 @@ model LearningLesson {
 
   @@unique([levelId, slug])
   @@index([levelId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LearningQuestion {
@@ -327,7 +327,7 @@ model LearningQuestion {
   attempts   QuestionAttempt[]
 
   @@index([lessonId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model QuestionOption {
@@ -342,7 +342,7 @@ model QuestionOption {
   attempts   QuestionAttempt[]
 
   @@index([questionId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LearningAsset {
@@ -358,7 +358,7 @@ model LearningAsset {
 
   @@unique([bucket, path])
   @@index([ownerId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model GameSession {
@@ -375,7 +375,7 @@ model GameSession {
 
   @@index([childProfileId, startedAt])
   @@index([levelId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model QuestionAttempt {
@@ -395,7 +395,7 @@ model QuestionAttempt {
 
   @@unique([gameSessionId, clientSequence])
   @@index([childProfileId, createdAt])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model LevelProgress {
@@ -412,7 +412,7 @@ model LevelProgress {
 
   @@unique([childProfileId, levelId])
   @@unique([idempotencyKey])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model TrackProgress {
@@ -426,7 +426,7 @@ model TrackProgress {
   track          LearningTrack @relation(fields: [trackId], references: [id], onDelete: Cascade)
 
   @@unique([childProfileId, trackId])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model DailyPlayUsage {
@@ -447,7 +447,7 @@ model DailyPlayUsage {
 
   @@unique([childProfileId, usageDate])
   @@index([parentProfileId, usageDate])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model RewardLedger {
@@ -464,7 +464,7 @@ model RewardLedger {
 
   @@unique([idempotencyKey])
   @@index([childProfileId, createdAt])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model EnergyLedger {
@@ -481,7 +481,7 @@ model EnergyLedger {
 
   @@unique([idempotencyKey])
   @@index([childProfileId, createdAt])
-  @@schema("bacangaji")
+  @@schema("gameadventure")
 }
 
 model AuditLog {
@@ -494,7 +494,7 @@ model AuditLog {
   createdAt   DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([actorUserId, createdAt])
-  @@schema("bacangaji_audit")
+  @@schema("gameadventure_audit")
 }
 
 model SecurityEvent {
@@ -508,5 +508,5 @@ model SecurityEvent {
 
   @@index([actorUserId, createdAt])
   @@index([eventType, createdAt])
-  @@schema("bacangaji_audit")
+  @@schema("gameadventure_audit")
 }
