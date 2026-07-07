@@ -24,8 +24,16 @@ export const auth = betterAuth({
         }
       : undefined,
   session: {
+    fields: {
+      token: "tokenHash"
+    },
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24
+  },
+  verification: {
+    fields: {
+      value: "valueHash"
+    }
   },
   advanced: {
     cookiePrefix: "bacangaji",

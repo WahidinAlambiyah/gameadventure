@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/server/auth/auth";
+import { prisma } from "@/server/database/prisma";
 import {
   hasPermission,
   type PermissionName,
@@ -47,11 +48,50 @@ export async function getCurrentUser(requestHeaders?: Headers): Promise<CurrentU
 
   if (!session?.user) return null;
 
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      id: true,
+      email: true,
+      parentProfile: {
+        select: { id: true }
+      },
+      userRoles: {
+        select: {
+          role: {
+            select: {
+              name: true,
+              rolePermissions: {
+                select: {
+                  permission: {
+                    select: { name: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!user) return null;
+
+  const roles = user.userRoles.map((userRole) => userRole.role.name as RoleName);
+  const permissions = Array.from(
+    new Set(
+      user.userRoles.flatMap((userRole) =>
+        userRole.role.rolePermissions.map((rolePermission) => rolePermission.permission.name)
+      )
+    )
+  );
+
   return {
-    id: session.user.id,
-    email: session.user.email,
-    roles: [],
-    permissions: []
+    id: user.id,
+    email: user.email,
+    roles,
+    permissions,
+    parentProfileId: user.parentProfile?.id
   };
 }
 
@@ -70,11 +110,29 @@ export async function requireRole(role: RoleName, requestHeaders?: Headers): Pro
   return user;
 }
 
+export async function requireParent(requestHeaders?: Headers): Promise<CurrentUser> {
+  const user = await requireRole("PARENT", requestHeaders);
+  if (!user.parentProfileId) {
+    if (!requestHeaders) redirect("/register");
+    throw new AuthorizationError("A parent profile is required.");
+  }
+  return user;
+}
+
 export async function requirePermission(
   permission: PermissionName,
   requestHeaders?: Headers
 ): Promise<CurrentUser> {
   const user = await requireAuthentication(requestHeaders);
+  if (!hasPermission(user.permissions, permission)) throw new AuthorizationError();
+  return user;
+}
+
+export async function requireParentPermission(
+  permission: PermissionName,
+  requestHeaders?: Headers
+): Promise<CurrentUser> {
+  const user = await requireParent(requestHeaders);
   if (!hasPermission(user.permissions, permission)) throw new AuthorizationError();
   return user;
 }

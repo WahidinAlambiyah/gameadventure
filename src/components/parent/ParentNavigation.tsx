@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 const links = [
   ["/parent", "Dashboard"],
@@ -16,6 +17,7 @@ export function ParentNavigation() {
           {label}
         </Link>
       ))}
+      <LogoutButton />
     </nav>
   );
 }

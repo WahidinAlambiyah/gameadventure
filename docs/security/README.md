@@ -5,8 +5,9 @@ Security controls prepared in the boilerplate:
 - Strict TypeScript.
 - Zod environment and request validation.
 - Better Auth lifecycle foundation.
-- Server-side RBAC helpers.
-- Server-side ownership checks.
+- Parent email/password registration and login through Better Auth.
+- Server-side RBAC helpers hydrated from persisted roles and permissions.
+- Server-side ownership checks for child profile APIs.
 - HTTP security headers and CSP foundation.
 - Structured logger with redaction.
 - Argon2id password/PIN hashing utility.
@@ -15,9 +16,14 @@ Security controls prepared in the boilerplate:
 - Audit and security event schema.
 - Public-only service worker caching.
 
+Auth schema compatibility:
+
+- Better Auth is configured to map `session.token` to the existing `tokenHash` column.
+- Better Auth is configured to map `verification.value` to the existing `valueHash` column.
+- Do not rename those fields or edit the applied initial migration without a reviewed migration plan.
+
 Unresolved production tasks:
 
 - Select transactional email provider.
-- Validate Better Auth schema against the final production migration.
 - Add persistent rate-limit storage.
 - Add production observability.
