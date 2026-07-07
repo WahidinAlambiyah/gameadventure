@@ -6,7 +6,7 @@ Accepted
 
 ## Decision
 
-Use `auth`, `bacangaji`, and `bacangaji_audit` schemas.
+Use `gameadventure_auth`, `gameadventure`, and `gameadventure_audit` schemas.
 
 ## Consequences
 

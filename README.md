@@ -13,9 +13,9 @@ The app is a Next.js modular monolith deployed to Vercel behind a custom domain 
 
 Business tables use PostgreSQL schemas:
 
-- `auth`: Better Auth user/account/session/verification data.
-- `bacangaji`: parent, child, RBAC, content, progress, rewards, energy, and screen-time data.
-- `bacangaji_audit`: audit logs and security events.
+- `gameadventure_auth`: Better Auth user/account/session/verification data.
+- `gameadventure`: parent, child, RBAC, content, progress, rewards, energy, and screen-time data.
+- `gameadventure_audit`: audit logs and security events.
 
 No application business table belongs in PostgreSQL `public`.
 

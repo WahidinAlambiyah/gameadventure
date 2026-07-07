@@ -1,4 +1,8 @@
-import { PrismaClient, type RoleName } from "@prisma/client";
+import "dotenv/config";
+
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
+import type { RoleName } from "../src/generated/prisma/enums";
 import { hashSecret } from "../src/server/security/password";
 import {
   initialRoles,
@@ -6,7 +10,19 @@ import {
   rolePermissions
 } from "../src/server/authorization/permissions";
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DIRECT_URL or DATABASE_URL must be configured before running the seed.");
+}
+
+const adapter = new PrismaPg({
+  connectionString
+});
+
+const prisma = new PrismaClient({
+  adapter
+});
 
 async function main() {
   if (process.env.APP_ENV === "production") {

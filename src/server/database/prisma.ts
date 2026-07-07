@@ -1,10 +1,16 @@
 import "server-only";
+
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 import { env } from "@/config/env";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-const adapter = new PrismaPg(env.DATABASE_URL);
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
+
+const adapter = new PrismaPg({
+  connectionString: env.DATABASE_URL
+});
 
 export const prisma =
   globalForPrisma.prisma ??

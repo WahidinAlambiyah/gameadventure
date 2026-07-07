@@ -2,9 +2,9 @@
 
 Schemas:
 
-- `auth`: users, accounts, sessions, verification tokens.
-- `bacangaji`: business data.
-- `bacangaji_audit`: audit and security events.
+- `gameadventure_auth`: users, accounts, sessions, verification tokens.
+- `gameadventure`: business data.
+- `gameadventure_audit`: audit and security events.
 
 Business tables must not be created in `public`.
 
