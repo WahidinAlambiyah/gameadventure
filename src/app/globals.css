@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fffaf1;
+  --foreground: #21313c;
+  --muted: #5b6872;
+  --brand: #2f7d75;
+  --brand-strong: #225b55;
+  --accent: #f2c14e;
+  --child: #78c6d0;
+  --admin: #2e3440;
+  --danger: #b42318;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.page-shell {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.app-button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 16px;
+  border: 0;
+  background: var(--brand);
+  color: white;
+  padding: 12px 18px;
+  font-weight: 700;
+}
+
+.app-button.secondary {
+  background: white;
+  color: var(--brand-strong);
+  box-shadow: inset 0 0 0 2px #d9ece8;
+}
+
+.surface {
+  border: 1px solid #e7dfd0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.muted {
+  color: var(--muted);
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>BacaNgaji Adventure icon</title>
+  <rect width="512" height="512" rx="96" fill="#fffaf1"/>
+  <circle cx="256" cy="250" r="170" fill="#78c6d0"/>
+  <path d="M152 330c28-84 66-148 104-148s76 64 104 148" fill="none" stroke="#2f7d75" stroke-width="38" stroke-linecap="round"/>
+  <circle cx="206" cy="230" r="22" fill="#21313c"/>
+  <circle cx="306" cy="230" r="22" fill="#21313c"/>
+  <path d="M214 292c28 24 56 24 84 0" fill="none" stroke="#21313c" stroke-width="20" stroke-linecap="round"/>
+</svg>
