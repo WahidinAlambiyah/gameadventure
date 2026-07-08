@@ -1,5 +1,4 @@
 import "server-only";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/database/prisma";
 import type { CurrentUser } from "@/server/auth/session";
 import { hashParentPin, verifySecret, assertFourDigitPin } from "@/server/security/password";
@@ -267,78 +266,78 @@ export async function verifyParentPin(
     };
   }
 
-  const outcome = await db.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
-      const setting = await tx.parentSecuritySetting.findUnique({
-        where: { parentProfileId: user.parentProfileId! }
-      });
-      if (!setting?.pinHash) return { kind: "invalid" } satisfies PinOutcome;
-      if (isLocked(setting.pinLockedUntil)) {
-        return {
-          kind: "locked",
-          retryAfterSeconds: retryAfterSeconds(setting.pinLockedUntil!)
-        } satisfies PinOutcome;
-      }
+  const outcome = await db.$transaction(async (tx) => {
+    // Parent-scoped advisory locking serializes operations per parent; after waiting,
+    // this read must see the previous committed transaction. Serializable would
+    // require explicit retry handling for serialization failures.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
+    const setting = await tx.parentSecuritySetting.findUnique({
+      where: { parentProfileId: user.parentProfileId! }
+    });
+    if (!setting?.pinHash) return { kind: "invalid" } satisfies PinOutcome;
+    if (isLocked(setting.pinLockedUntil)) {
+      return {
+        kind: "locked",
+        retryAfterSeconds: retryAfterSeconds(setting.pinLockedUntil!)
+      } satisfies PinOutcome;
+    }
 
-      if (!(await verifyPinHash(setting.pinHash, pin))) {
-        const failedPinAttempts = effectiveFailedAttempts(setting) + 1;
-        const lockedUntil =
-          failedPinAttempts >= maxFailedPinAttempts
-            ? new Date(Date.now() + lockoutSeconds * 1000)
-            : null;
+    if (!(await verifyPinHash(setting.pinHash, pin))) {
+      const failedPinAttempts = effectiveFailedAttempts(setting) + 1;
+      const lockedUntil =
+        failedPinAttempts >= maxFailedPinAttempts
+          ? new Date(Date.now() + lockoutSeconds * 1000)
+          : null;
 
-        await tx.parentSecuritySetting.update({
-          where: { parentProfileId: user.parentProfileId! },
-          data: {
-            failedPinAttempts,
-            pinLockedUntil: lockedUntil
-          }
-        });
-        await writeSecurityEvent(
-          {
-            actorUserId: user.id,
-            parentProfileId: user.parentProfileId,
-            eventType: lockedUntil ? "PARENT_GATE_LOCKED" : "PARENT_GATE_FAILED",
-            metadata: {
-              category: "invalid_pin",
-              ...(lockedUntil ? { lockedUntil: lockedUntil.toISOString() } : {})
-            }
-          },
-          tx
-        );
-
-        if (lockedUntil) {
-          return {
-            kind: "locked",
-            retryAfterSeconds: lockoutSeconds
-          } satisfies PinOutcome;
-        }
-        return { kind: "invalid" } satisfies PinOutcome;
-      }
-
-      const updated = await tx.parentSecuritySetting.update({
+      await tx.parentSecuritySetting.update({
         where: { parentProfileId: user.parentProfileId! },
         data: {
-          failedPinAttempts: 0,
-          pinLockedUntil: null,
-          lastPinVerifiedAt: new Date()
+          failedPinAttempts,
+          pinLockedUntil: lockedUntil
         }
       });
       await writeSecurityEvent(
         {
           actorUserId: user.id,
           parentProfileId: user.parentProfileId,
-          eventType: "PARENT_GATE_VERIFIED",
-          metadata: { category: "success" }
+          eventType: lockedUntil ? "PARENT_GATE_LOCKED" : "PARENT_GATE_FAILED",
+          metadata: {
+            category: "invalid_pin",
+            ...(lockedUntil ? { lockedUntil: lockedUntil.toISOString() } : {})
+          }
         },
         tx
       );
 
-      return { kind: "verified", setting: updated } satisfies PinOutcome;
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+      if (lockedUntil) {
+        return {
+          kind: "locked",
+          retryAfterSeconds: lockoutSeconds
+        } satisfies PinOutcome;
+      }
+      return { kind: "invalid" } satisfies PinOutcome;
+    }
+
+    const updated = await tx.parentSecuritySetting.update({
+      where: { parentProfileId: user.parentProfileId! },
+      data: {
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+        lastPinVerifiedAt: new Date()
+      }
+    });
+    await writeSecurityEvent(
+      {
+        actorUserId: user.id,
+        parentProfileId: user.parentProfileId,
+        eventType: "PARENT_GATE_VERIFIED",
+        metadata: { category: "success" }
+      },
+      tx
+    );
+
+    return { kind: "verified", setting: updated } satisfies PinOutcome;
+  });
 
   if (outcome.kind !== "verified") throwFailedOutcome(outcome);
 
@@ -401,88 +400,88 @@ export async function changeParentPin(
     };
   }
 
-  const outcome = await db.$transaction(
-    async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
-      const setting = await tx.parentSecuritySetting.findUnique({
-        where: { parentProfileId: user.parentProfileId! }
-      });
-      if (!setting?.pinHash) return { kind: "invalid" } satisfies PinOutcome;
-      if (isLocked(setting.pinLockedUntil)) {
-        return {
-          kind: "locked",
-          retryAfterSeconds: retryAfterSeconds(setting.pinLockedUntil!)
-        } satisfies PinOutcome;
-      }
+  const outcome = await db.$transaction(async (tx) => {
+    // Parent-scoped advisory locking serializes operations per parent; after waiting,
+    // this read must see the previous committed transaction. Serializable would
+    // require explicit retry handling for serialization failures.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
+    const setting = await tx.parentSecuritySetting.findUnique({
+      where: { parentProfileId: user.parentProfileId! }
+    });
+    if (!setting?.pinHash) return { kind: "invalid" } satisfies PinOutcome;
+    if (isLocked(setting.pinLockedUntil)) {
+      return {
+        kind: "locked",
+        retryAfterSeconds: retryAfterSeconds(setting.pinLockedUntil!)
+      } satisfies PinOutcome;
+    }
 
-      if (!(await verifyPinHash(setting.pinHash, currentPin))) {
-        const failedPinAttempts = effectiveFailedAttempts(setting) + 1;
-        const lockedUntil =
-          failedPinAttempts >= maxFailedPinAttempts
-            ? new Date(Date.now() + lockoutSeconds * 1000)
-            : null;
+    if (!(await verifyPinHash(setting.pinHash, currentPin))) {
+      const failedPinAttempts = effectiveFailedAttempts(setting) + 1;
+      const lockedUntil =
+        failedPinAttempts >= maxFailedPinAttempts
+          ? new Date(Date.now() + lockoutSeconds * 1000)
+          : null;
 
-        await tx.parentSecuritySetting.update({
-          where: { parentProfileId: user.parentProfileId! },
-          data: {
-            failedPinAttempts,
-            pinLockedUntil: lockedUntil
-          }
-        });
-        await writeSecurityEvent(
-          {
-            actorUserId: user.id,
-            parentProfileId: user.parentProfileId,
-            eventType: lockedUntil ? "PARENT_GATE_LOCKED" : "PARENT_GATE_FAILED",
-            metadata: {
-              category: "invalid_pin_change",
-              ...(lockedUntil ? { lockedUntil: lockedUntil.toISOString() } : {})
-            }
-          },
-          tx
-        );
-
-        if (lockedUntil) {
-          return {
-            kind: "locked",
-            retryAfterSeconds: lockoutSeconds
-          } satisfies PinOutcome;
-        }
-        return { kind: "invalid" } satisfies PinOutcome;
-      }
-
-      const updated = await tx.parentSecuritySetting.update({
-        where: { parentProfileId: user.parentProfileId },
+      await tx.parentSecuritySetting.update({
+        where: { parentProfileId: user.parentProfileId! },
         data: {
-          pinHash,
-          failedPinAttempts: 0,
-          pinLockedUntil: null,
-          lastPinVerifiedAt: new Date()
+          failedPinAttempts,
+          pinLockedUntil: lockedUntil
         }
       });
       await writeSecurityEvent(
         {
           actorUserId: user.id,
           parentProfileId: user.parentProfileId,
-          eventType: "PARENT_PIN_CHANGED",
-          metadata: { category: "success" }
-        },
-        tx
-      );
-      await writeAuditEvent(
-        {
-          actorUserId: user.id,
-          parentProfileId: user.parentProfileId,
-          action: "PARENT_PIN_CHANGED",
-          metadata: { changed: ["pinConfigured"] }
+          eventType: lockedUntil ? "PARENT_GATE_LOCKED" : "PARENT_GATE_FAILED",
+          metadata: {
+            category: "invalid_pin_change",
+            ...(lockedUntil ? { lockedUntil: lockedUntil.toISOString() } : {})
+          }
         },
         tx
       );
 
-      return { kind: "changed", setting: updated } satisfies PinOutcome;
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+      if (lockedUntil) {
+        return {
+          kind: "locked",
+          retryAfterSeconds: lockoutSeconds
+        } satisfies PinOutcome;
+      }
+      return { kind: "invalid" } satisfies PinOutcome;
+    }
+
+    const updated = await tx.parentSecuritySetting.update({
+      where: { parentProfileId: user.parentProfileId },
+      data: {
+        pinHash,
+        failedPinAttempts: 0,
+        pinLockedUntil: null,
+        lastPinVerifiedAt: new Date()
+      }
+    });
+    await writeSecurityEvent(
+      {
+        actorUserId: user.id,
+        parentProfileId: user.parentProfileId,
+        eventType: "PARENT_PIN_CHANGED",
+        metadata: { category: "success" }
+      },
+      tx
+    );
+    await writeAuditEvent(
+      {
+        actorUserId: user.id,
+        parentProfileId: user.parentProfileId,
+        action: "PARENT_PIN_CHANGED",
+        metadata: { changed: ["pinConfigured"] }
+      },
+      tx
+    );
+
+    return { kind: "changed", setting: updated } satisfies PinOutcome;
+  });
 
   if (outcome.kind !== "changed") throwFailedOutcome(outcome);
 
