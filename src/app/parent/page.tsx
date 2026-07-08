@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { requireParent } from "@/server/auth/session";
+import { requireParentGatePage } from "@/server/parent-gate/guard";
 import { listChildrenByParentId } from "@/server/repositories/childRepository";
 
 export default async function ParentDashboardPage() {
   const user = await requireParent();
+  await requireParentGatePage("/parent");
   const children = await listChildrenByParentId(user.parentProfileId!);
   const child = children[0];
 

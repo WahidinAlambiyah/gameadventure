@@ -1,4 +1,5 @@
 import { PlaceholderPage } from "@/components/shared/PlaceholderPage";
+import { requireParentGatePage } from "@/server/parent-gate/guard";
 
 export default async function ChildDetailPage({
   params
@@ -6,6 +7,7 @@ export default async function ChildDetailPage({
   params: Promise<{ childId: string }>;
 }) {
   const { childId } = await params;
+  await requireParentGatePage(`/parent/children/${childId}`);
 
   return (
     <PlaceholderPage

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AppError } from "./errors";
+import { AppError, ParentGateLockedError } from "./errors";
 
 type SuccessEnvelope<T> = {
   success: true;
@@ -22,7 +22,7 @@ export function ok<T>(data: T, meta?: Record<string, unknown>, init?: ResponseIn
 
 export function fail(error: unknown) {
   if (error instanceof AppError) {
-    return NextResponse.json<ErrorEnvelope>(
+    const response = NextResponse.json<ErrorEnvelope>(
       {
         success: false,
         error: {
@@ -32,6 +32,10 @@ export function fail(error: unknown) {
       },
       { status: error.status }
     );
+    if (error instanceof ParentGateLockedError && error.retryAfterSeconds) {
+      response.headers.set("Retry-After", String(error.retryAfterSeconds));
+    }
+    return response;
   }
 
   return NextResponse.json<ErrorEnvelope>(

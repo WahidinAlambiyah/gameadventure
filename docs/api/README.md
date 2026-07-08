@@ -32,6 +32,13 @@ Implemented endpoints:
 - `GET /api/v1/children`
 - `POST /api/v1/children`
 - `GET /api/v1/children/:childId`
+- `GET /api/v1/children/:childId/play-status`
+- `GET /api/v1/parent/security`
+- `PUT /api/v1/parent/security/pin`
+- `POST /api/v1/auth/parent-gate/verify`
+- `DELETE /api/v1/auth/parent-gate`
+- `GET /api/v1/parent/settings`
+- `PATCH /api/v1/parent/settings`
 
 Remaining endpoints are structured placeholders.
 
@@ -43,3 +50,16 @@ Child profile creation accepts:
 - exactly one of `birthYear` or `ageRange`.
 - `avatarKey`: allowlisted starter avatar.
 - `learningPreferences.focus`: one of `reading`, `hijaiyah`, or `both`.
+
+Parent security endpoints:
+
+- `PUT /api/v1/parent/security/pin` sets the initial PIN with `{ "pin": "1234", "confirmPin": "1234" }`.
+- `PUT /api/v1/parent/security/pin` changes an existing PIN with `{ "currentPin": "1234", "pin": "5678", "confirmPin": "5678" }`.
+- `POST /api/v1/auth/parent-gate/verify` verifies a PIN and returns a sanitized local `returnTo`.
+- `GET /api/v1/parent/security` returns safe status fields only.
+- PIN plaintext and PIN hashes are never returned.
+
+Parent settings endpoints require a valid parent-gate cookie:
+
+- `GET /api/v1/parent/settings`
+- `PATCH /api/v1/parent/settings` with `dailyLimitMinutes`, `timezone`, and `energyEnabled`.

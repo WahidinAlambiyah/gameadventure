@@ -1,6 +1,6 @@
 import "server-only";
-import type { PrismaClient } from "@/generated/prisma/client";
-import { Prisma } from "@/generated/prisma/client";
+import type { PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/database/prisma";
 import type { CreateChildProfileInput } from "@/features/parent/validation";
 import { ConflictError } from "@/server/errors/errors";

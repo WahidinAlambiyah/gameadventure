@@ -9,7 +9,10 @@ export function ChildNavigation({ childId = "demo-child" }: { childId?: string }
       <Link className="app-button secondary" href="/child/select-profile">
         Profiles
       </Link>
-      <Link className="app-button secondary" href="/parent/security/verify-parent-pin">
+      <Link
+        className="app-button secondary"
+        href={`/parent/security/verify-parent-pin?returnTo=${encodeURIComponent("/parent")}`}
+      >
         Parent gate
       </Link>
     </nav>

@@ -145,6 +145,13 @@ a {
   font-weight: 700;
 }
 
+.form-success {
+  border-left: 4px solid var(--brand);
+  padding-left: 12px;
+  color: var(--brand-strong);
+  font-weight: 700;
+}
+
 .dashboard-grid {
   display: grid;
   gap: 24px;

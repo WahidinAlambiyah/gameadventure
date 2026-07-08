@@ -1,6 +1,8 @@
 import { PlaceholderPage } from "@/components/shared/PlaceholderPage";
+import { requireParentGatePage } from "@/server/parent-gate/guard";
 
-export default function ParentProgressPage() {
+export default async function ParentProgressPage() {
+  await requireParentGatePage("/parent/progress");
   return (
     <PlaceholderPage
       title="Progress"

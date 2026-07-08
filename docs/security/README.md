@@ -16,6 +16,7 @@ Security controls prepared in the boilerplate:
 - Turnstile adapter abstraction.
 - Audit and security event schema.
 - Public-only service worker caching.
+- Server-enforced parent gate for sensitive parent controls.
 
 Auth schema compatibility:
 
@@ -34,6 +35,14 @@ Concurrency note:
 - `POST /api/v1/children` uses a PostgreSQL advisory transaction lock scoped to `parentProfileId` before checking and creating the active child profile.
 - The default test suite includes an in-memory simultaneous-request regression test.
 - A database-backed concurrency test is available when `TEST_DATABASE_URL` is configured; it creates and removes only exact temporary records and never resets or truncates the database.
+
+Parent gate note:
+
+- Parent PINs are exactly four digits and are hashed with Argon2id.
+- The parent-gate cookie is httpOnly, sameSite strict, HMAC-SHA256 signed, and expires after 15 minutes.
+- The token is bound to the authenticated user, parent profile, and PIN `updatedAt`.
+- Five failed PIN attempts lock the gate for 15 minutes and return `Retry-After`.
+- Parent PIN reset remains deferred until a reviewed reauthentication path is selected.
 
 Unresolved production tasks:
 
