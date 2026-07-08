@@ -5,6 +5,10 @@ export type AppErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "RATE_LIMITED"
+  | "PARENT_GATE_REQUIRED"
+  | "PARENT_GATE_INVALID"
+  | "PARENT_GATE_LOCKED"
+  | "PIN_ALREADY_CONFIGURED"
   | "DOMAIN_ERROR"
   | "INFRASTRUCTURE_ERROR";
 
@@ -51,6 +55,33 @@ export class ConflictError extends AppError {
 export class RateLimitError extends AppError {
   constructor(message = "Too many requests.") {
     super("RATE_LIMITED", message, 429);
+  }
+}
+
+export class ParentGateRequiredError extends AppError {
+  constructor(message = "Parent gate verification is required.") {
+    super("PARENT_GATE_REQUIRED", message, 403);
+  }
+}
+
+export class ParentGateInvalidError extends AppError {
+  constructor(message = "Parent gate verification failed.") {
+    super("PARENT_GATE_INVALID", message, 403);
+  }
+}
+
+export class ParentGateLockedError extends AppError {
+  constructor(
+    message = "Parent gate is temporarily locked.",
+    public readonly retryAfterSeconds?: number
+  ) {
+    super("PARENT_GATE_LOCKED", message, 429);
+  }
+}
+
+export class PinAlreadyConfiguredError extends AppError {
+  constructor(message = "A parent PIN is already configured.") {
+    super("PIN_ALREADY_CONFIGURED", message, 409);
   }
 }
 

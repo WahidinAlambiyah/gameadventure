@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { describe, expect, it } from "vitest";
-import { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { createChildForParent } from "@/server/repositories/childRepository";
 import { ConflictError } from "@/server/errors/errors";
 

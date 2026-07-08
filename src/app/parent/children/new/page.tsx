@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { ChildProfileForm } from "@/features/parent/ChildProfileForm";
 import { requireParent } from "@/server/auth/session";
+import { requireParentGatePage } from "@/server/parent-gate/guard";
 import { listChildrenByParentId } from "@/server/repositories/childRepository";
 
 export default async function NewChildPage() {
   const user = await requireParent();
+  await requireParentGatePage("/parent/children/new");
   const children = await listChildrenByParentId(user.parentProfileId!);
   if (children.length > 0) redirect("/parent/children");
 

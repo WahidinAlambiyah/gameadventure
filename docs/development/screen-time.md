@@ -10,4 +10,15 @@ Planned heartbeat flow:
 4. Server ignores client device time.
 5. Parent overrides are evaluated server-side.
 
-This boilerplate includes schema and service interfaces only.
+Implemented in Phase 1B:
+
+- `GET /api/v1/children/:childId/play-status` verifies server-side child ownership.
+- Daily limit evaluation uses the configured parent timezone.
+- The next reset is calculated as the UTC instant for the next local midnight.
+- Parent overrides are represented in policy output when `parentOverrideUntil` is active.
+
+Deferred:
+
+- Heartbeat writes that increment active-play seconds.
+- Runtime game-session start/stop enforcement.
+- Parent override mutation UI.

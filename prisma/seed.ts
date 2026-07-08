@@ -1,8 +1,7 @@
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../src/generated/prisma/client";
-import type { RoleName } from "../src/generated/prisma/enums";
+import { PrismaClient, type RoleName } from "@prisma/client";
 import { hashSecret } from "../src/server/security/password";
 import {
   initialRoles,
