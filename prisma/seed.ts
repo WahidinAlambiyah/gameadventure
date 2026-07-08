@@ -1,7 +1,7 @@
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type RoleName } from "@prisma/client";
+import { PrismaClient, type ContentStatus, type RoleName } from "@prisma/client";
 import { hashSecret } from "../src/server/security/password";
 import {
   initialRoles,
@@ -167,32 +167,41 @@ async function main() {
   ]) {
     const createdTrack = await prisma.learningTrack.upsert({
       where: { slug: track.slug },
-      update: {},
+      update: {
+        status: "PUBLISHED" as ContentStatus
+      },
       create: {
         slug: track.slug,
         title: track.title,
-        description: "Placeholder learning track"
+        description: "Placeholder learning track",
+        status: "PUBLISHED" as ContentStatus
       }
     });
 
     const zone = await prisma.learningZone.upsert({
       where: { trackId_slug: { trackId: createdTrack.id, slug: "starter-zone" } },
-      update: {},
+      update: {
+        status: "PUBLISHED" as ContentStatus
+      },
       create: {
         trackId: createdTrack.id,
         slug: "starter-zone",
-        title: track.zone
+        title: track.zone,
+        status: "PUBLISHED" as ContentStatus
       }
     });
 
     await prisma.learningLevel.upsert({
       where: { trackId_slug: { trackId: createdTrack.id, slug: "starter-level" } },
-      update: {},
+      update: {
+        status: "PUBLISHED" as ContentStatus
+      },
       create: {
         trackId: createdTrack.id,
         zoneId: zone.id,
         slug: "starter-level",
-        title: "Starter Level"
+        title: "Starter Level",
+        status: "PUBLISHED" as ContentStatus
       }
     });
   }
