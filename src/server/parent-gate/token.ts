@@ -11,18 +11,19 @@ type ParentGatePayload = {
   parentProfileId: string;
   issuedAt: number;
   expiresAt: number;
-  pinUpdatedAt: string;
+  pinFingerprint: string;
 };
 
 type VerifyParentGateArgs = {
   token?: string;
   userId: string;
   parentProfileId: string;
-  pinUpdatedAt: Date | string;
+  pinFingerprint: string;
   now?: Date;
 };
 
-const domain = "parent-gate:v1";
+const gateTokenSignatureDomain = "parent-gate:v1";
+const pinFingerprintDomain = "parent-pin-fingerprint:v1";
 
 function base64UrlEncode(input: string) {
   return Buffer.from(input, "utf8").toString("base64url");
@@ -34,7 +35,7 @@ function base64UrlDecode(input: string) {
 
 function sign(encodedPayload: string) {
   return createHmac("sha256", env.BETTER_AUTH_SECRET)
-    .update(`${domain}.${encodedPayload}`)
+    .update(`${gateTokenSignatureDomain}.${encodedPayload}`)
     .digest("base64url");
 }
 
@@ -45,14 +46,16 @@ function safeEqual(left: string, right: string) {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function normalizePinUpdatedAt(value: Date | string) {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+export function parentPinFingerprint(pinHash: string) {
+  return createHmac("sha256", env.BETTER_AUTH_SECRET)
+    .update(`${pinFingerprintDomain}.${pinHash}`)
+    .digest("base64url");
 }
 
 export function createParentGateToken({
   userId,
   parentProfileId,
-  pinUpdatedAt,
+  pinFingerprint,
   now = new Date()
 }: Omit<VerifyParentGateArgs, "token">) {
   const issuedAt = Math.floor(now.getTime() / 1000);
@@ -62,7 +65,7 @@ export function createParentGateToken({
     parentProfileId,
     issuedAt,
     expiresAt: issuedAt + parentGateMaxAgeSeconds,
-    pinUpdatedAt: normalizePinUpdatedAt(pinUpdatedAt)
+    pinFingerprint
   };
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   return `${encodedPayload}.${sign(encodedPayload)}`;
@@ -72,7 +75,7 @@ export function verifyParentGateToken({
   token,
   userId,
   parentProfileId,
-  pinUpdatedAt,
+  pinFingerprint,
   now = new Date()
 }: VerifyParentGateArgs) {
   if (!token) return { valid: false as const };
@@ -88,8 +91,7 @@ export function verifyParentGateToken({
     if (payload.version !== 1) return { valid: false as const };
     if (payload.userId !== userId) return { valid: false as const };
     if (payload.parentProfileId !== parentProfileId) return { valid: false as const };
-    if (payload.pinUpdatedAt !== normalizePinUpdatedAt(pinUpdatedAt))
-      return { valid: false as const };
+    if (payload.pinFingerprint !== pinFingerprint) return { valid: false as const };
     if (payload.expiresAt <= nowSeconds) return { valid: false as const };
     return { valid: true as const, expiresAt: new Date(payload.expiresAt * 1000) };
   } catch {

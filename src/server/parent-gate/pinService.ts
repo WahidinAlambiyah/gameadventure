@@ -9,11 +9,17 @@ import {
   PinAlreadyConfiguredError,
   ValidationError
 } from "@/server/errors/errors";
-import { createParentGateToken } from "@/server/parent-gate/token";
+import { createParentGateToken, parentPinFingerprint } from "@/server/parent-gate/token";
 import { writeAuditEvent, writeSecurityEvent } from "@/server/audit/events";
 
 const maxFailedPinAttempts = 5;
 const lockoutSeconds = 15 * 60;
+type PinVerifier = typeof verifySecret;
+type ParentGateDbClient = Pick<typeof prisma, "$transaction" | "parentSecuritySetting">;
+type PinServiceOptions = {
+  db?: ParentGateDbClient;
+  verifyPinHash?: PinVerifier;
+};
 
 type ParentSecurityStatus = {
   pinConfigured: boolean;
@@ -21,19 +27,25 @@ type ParentSecurityStatus = {
   locked: boolean;
   lockedUntil: Date | null;
   lastPinVerifiedAt: Date | null;
-  pinUpdatedAt: Date;
+  pinFingerprint: string | null;
 };
 
-const testPins = new Map<
-  string,
-  {
-    pinHash: string | null;
-    failedPinAttempts: number;
-    pinLockedUntil: Date | null;
-    lastPinVerifiedAt: Date | null;
-    updatedAt: Date;
-  }
->();
+type TestParentPinSetting = {
+  pinHash: string | null;
+  failedPinAttempts: number;
+  pinLockedUntil: Date | null;
+  lastPinVerifiedAt: Date | null;
+  updatedAt: Date;
+};
+
+const globalForParentPinTests = globalThis as unknown as {
+  __bacangajiTestParentPins?: Map<string, TestParentPinSetting>;
+};
+
+const testPins =
+  globalForParentPinTests.__bacangajiTestParentPins ?? new Map<string, TestParentPinSetting>();
+
+globalForParentPinTests.__bacangajiTestParentPins = testPins;
 
 function getTestSetting(parentProfileId: string) {
   if (!testPins.has(parentProfileId)) {
@@ -79,12 +91,12 @@ function statusFromSetting(setting: {
     locked: isLocked(setting.pinLockedUntil),
     lockedUntil: setting.pinLockedUntil,
     lastPinVerifiedAt: setting.lastPinVerifiedAt,
-    pinUpdatedAt: setting.updatedAt
+    pinFingerprint: setting.pinHash ? parentPinFingerprint(setting.pinHash) : null
   };
 }
 
 export async function getParentSecurityStatus(parentProfileId: string) {
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test") {
     return statusFromSetting(getTestSetting(parentProfileId));
   }
 
@@ -104,12 +116,18 @@ export async function getParentSecurityStatus(parentProfileId: string) {
   return statusFromSetting(setting);
 }
 
-export async function setInitialParentPin(user: CurrentUser, pin: string, confirmPin: string) {
+export async function setInitialParentPin(
+  user: CurrentUser,
+  pin: string,
+  confirmPin: string,
+  options: Pick<PinServiceOptions, "db"> = {}
+) {
   if (!user.parentProfileId) throw new ValidationError("Parent profile is required.");
   assertPinPair(pin, confirmPin);
   const pinHash = await hashParentPin(pin);
+  const db = options.db ?? prisma;
 
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test" && !options.db) {
     const setting = getTestSetting(user.parentProfileId);
     if (setting.pinHash) throw new PinAlreadyConfiguredError();
     setting.pinHash = pinHash;
@@ -121,13 +139,13 @@ export async function setInitialParentPin(user: CurrentUser, pin: string, confir
       token: createParentGateToken({
         userId: user.id,
         parentProfileId: user.parentProfileId,
-        pinUpdatedAt: setting.updatedAt
+        pinFingerprint: parentPinFingerprint(setting.pinHash)
       }),
       status: statusFromSetting(setting)
     };
   }
 
-  return prisma.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
     const existing = await tx.parentSecuritySetting.upsert({
       where: { parentProfileId: user.parentProfileId },
@@ -169,18 +187,24 @@ export async function setInitialParentPin(user: CurrentUser, pin: string, confir
       token: createParentGateToken({
         userId: user.id,
         parentProfileId: user.parentProfileId!,
-        pinUpdatedAt: setting.updatedAt
+        pinFingerprint: parentPinFingerprint(setting.pinHash!)
       }),
       status: statusFromSetting(setting)
     };
   });
 }
 
-export async function verifyParentPin(user: CurrentUser, pin: string) {
+export async function verifyParentPin(
+  user: CurrentUser,
+  pin: string,
+  options: PinServiceOptions = {}
+) {
   if (!user.parentProfileId) throw new ValidationError("Parent profile is required.");
   assertFourDigitPin(pin);
+  const db = options.db ?? prisma;
+  const verifyPinHash = options.verifyPinHash ?? verifySecret;
 
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test" && !options.db) {
     const setting = getTestSetting(user.parentProfileId);
     if (!setting.pinHash) throw new ParentGateInvalidError();
     if (isLocked(setting.pinLockedUntil)) {
@@ -189,8 +213,9 @@ export async function verifyParentPin(user: CurrentUser, pin: string) {
         retryAfterSeconds(setting.pinLockedUntil!)
       );
     }
-    if (!(await verifySecret(setting.pinHash, pin))) {
+    if (!(await verifyPinHash(setting.pinHash, pin))) {
       setting.failedPinAttempts += 1;
+      setting.updatedAt = new Date();
       if (setting.failedPinAttempts >= maxFailedPinAttempts) {
         setting.pinLockedUntil = new Date(Date.now() + lockoutSeconds * 1000);
         throw new ParentGateLockedError("Parent gate is temporarily locked.", lockoutSeconds);
@@ -200,18 +225,18 @@ export async function verifyParentPin(user: CurrentUser, pin: string) {
     setting.failedPinAttempts = 0;
     setting.pinLockedUntil = null;
     setting.lastPinVerifiedAt = new Date();
-    setting.updatedAt = new Date(setting.updatedAt);
+    setting.updatedAt = new Date();
     return {
       token: createParentGateToken({
         userId: user.id,
         parentProfileId: user.parentProfileId,
-        pinUpdatedAt: setting.updatedAt
+        pinFingerprint: parentPinFingerprint(setting.pinHash)
       }),
       status: statusFromSetting(setting)
     };
   }
 
-  return prisma.$transaction(
+  return db.$transaction(
     async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
       const setting = await tx.parentSecuritySetting.findUnique({
@@ -225,7 +250,7 @@ export async function verifyParentPin(user: CurrentUser, pin: string) {
         );
       }
 
-      if (!(await verifySecret(setting.pinHash, pin))) {
+      if (!(await verifyPinHash(setting.pinHash, pin))) {
         const failedPinAttempts = setting.failedPinAttempts + 1;
         const lockedUntil =
           failedPinAttempts >= maxFailedPinAttempts
@@ -280,7 +305,7 @@ export async function verifyParentPin(user: CurrentUser, pin: string) {
         token: createParentGateToken({
           userId: user.id,
           parentProfileId: user.parentProfileId!,
-          pinUpdatedAt: updated.updatedAt
+          pinFingerprint: parentPinFingerprint(updated.pinHash!)
         }),
         status: statusFromSetting(updated)
       };
@@ -303,7 +328,7 @@ export async function changeParentPin(
   if (!user.parentProfileId) throw new ValidationError("Parent profile is required.");
 
   const setting =
-    process.env.APP_ENV === "test"
+    process.env["APP_ENV"] === "test"
       ? (() => {
           const testSetting = getTestSetting(user.parentProfileId!);
           testSetting.pinHash = pinHash;
@@ -323,7 +348,7 @@ export async function changeParentPin(
           }
         });
 
-  if (process.env.APP_ENV !== "test") {
+  if (process.env["APP_ENV"] !== "test") {
     await writeSecurityEvent({
       actorUserId: user.id,
       parentProfileId: user.parentProfileId,
@@ -342,7 +367,7 @@ export async function changeParentPin(
     token: createParentGateToken({
       userId: user.id,
       parentProfileId: user.parentProfileId,
-      pinUpdatedAt: setting.updatedAt
+      pinFingerprint: parentPinFingerprint(setting.pinHash!)
     }),
     status: statusFromSetting(setting)
   };

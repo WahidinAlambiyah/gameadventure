@@ -22,7 +22,7 @@ export async function getParentGateState(user: CurrentUser, token?: string) {
     token,
     userId: user.id,
     parentProfileId: user.parentProfileId,
-    pinUpdatedAt: status.pinUpdatedAt
+    pinFingerprint: status.pinFingerprint ?? ""
   });
   return {
     configured: true,

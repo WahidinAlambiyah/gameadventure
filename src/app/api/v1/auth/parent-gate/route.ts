@@ -6,7 +6,7 @@ import { writeSecurityEvent } from "@/server/audit/events";
 export async function DELETE(request: Request) {
   try {
     const user = await requireParent(request.headers);
-    if (process.env.APP_ENV !== "test") {
+    if (process.env["APP_ENV"] !== "test") {
       await writeSecurityEvent({
         actorUserId: user.id,
         parentProfileId: user.parentProfileId,

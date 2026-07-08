@@ -22,7 +22,7 @@ export type CurrentUser = {
 };
 
 function testUserFromHeaders(requestHeaders: Headers): CurrentUser | null {
-  if (process.env.APP_ENV !== "test" && process.env.NODE_ENV !== "test") return null;
+  if (process.env["APP_ENV"] !== "test" && process.env.NODE_ENV !== "test") return null;
 
   const userId = requestHeaders.get("x-test-user-id");
   if (!userId) return null;
@@ -93,7 +93,7 @@ export async function getCurrentUser(requestHeaders?: Headers): Promise<CurrentU
   const resolvedHeaders = requestHeaders ?? (await headers());
   const testUser = testUserFromHeaders(resolvedHeaders);
   if (testUser) return testUser;
-  if (process.env.APP_ENV === "test" || process.env.NODE_ENV === "test") return null;
+  if (process.env["APP_ENV"] === "test" || process.env.NODE_ENV === "test") return null;
   if (!resolvedHeaders.get("cookie")) return null;
 
   const session = await auth.api.getSession({
@@ -137,7 +137,7 @@ export async function requireParent(requestHeaders?: Headers): Promise<CurrentUs
       displayName
     });
 
-    if (process.env.APP_ENV === "test" || process.env.NODE_ENV === "test") {
+    if (process.env["APP_ENV"] === "test" || process.env.NODE_ENV === "test") {
       return {
         ...user,
         roles: ["PARENT"],

@@ -15,9 +15,11 @@ Phase 1B adds a server-enforced parent gate for sensitive parent controls.
 
 - Successful PIN setup or verification issues an httpOnly, sameSite strict parent-gate cookie named `bacangaji_parent_gate`.
 - The cookie is HMAC-SHA256 signed with the server auth secret.
-- The signed payload is bound to the user id, parent profile id, expiry, and parent PIN `updatedAt`.
+- The signed payload is bound to the user id, parent profile id, expiry, and a fixed-length HMAC fingerprint derived from the current `pinHash`.
+- The PIN fingerprint uses a separate HMAC domain string from the gate-token signature.
 - Gate tokens expire after 15 minutes.
 - Changing the parent PIN invalidates previously issued gate cookies.
+- Failed PIN attempts, lockout updates, and successful verification timestamps do not invalidate existing valid gate cookies.
 - `DELETE /api/v1/auth/parent-gate` clears only the parent-gate cookie.
 
 ## Lockout
@@ -45,3 +47,4 @@ Phase 1B adds a server-enforced parent gate for sensitive parent controls.
 - Unit tests cover signed gate-token validation, expiry, tampering, cross-user and cross-parent rejection, and PIN-version invalidation.
 - Unit tests cover screen-time limit boundaries, parent override, timezone usage date, and local-midnight reset.
 - Integration tests cover PIN setup/change/verify, duplicate setup rejection, lockout, safe status responses, gate-protected settings, non-parent rejection, play-status ownership, and gate-cookie clearing.
+- Set `TEST_DATABASE_URL` to enable the opt-in database-backed simultaneous PIN lockout test.

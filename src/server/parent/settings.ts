@@ -30,7 +30,7 @@ export function resetTestParentSettings() {
 }
 
 export async function getParentSettingsSummary(parentProfileId: string) {
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test") {
     const setting = getTestSetting(parentProfileId);
     const policy = evaluateScreenTimePolicy({
       dailyLimitSeconds: setting.dailyLimitMinutes * 60,
@@ -109,7 +109,7 @@ export async function updateParentSettings(
   }
 ) {
   const changed = ["dailyLimitMinutes", "timezone", "energyEnabled"];
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test") {
     const setting = getTestSetting(parentProfileId);
     setting.dailyLimitMinutes = input.dailyLimitMinutes;
     setting.timezone = input.timezone;

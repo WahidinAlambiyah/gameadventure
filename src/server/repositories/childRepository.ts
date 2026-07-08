@@ -71,7 +71,7 @@ async function withTestChildLock<T>(parentProfileId: string, action: () => Promi
 }
 
 export async function findChildByIdAndParentId(childId: string, parentProfileId: string) {
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test") {
     if (childId === "owned-child" && parentProfileId === "parent-1") {
       return sanitizeChild({
         id: childId,
@@ -104,7 +104,7 @@ export async function findChildByIdAndParentId(childId: string, parentProfileId:
 }
 
 export async function listChildrenByParentId(parentProfileId: string) {
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test") {
     return getTestChildren(parentProfileId)
       .filter((child) => !child.deletedAt)
       .map(sanitizeChild);
@@ -133,7 +133,7 @@ export async function createChildForParent(
   input: CreateChildProfileInput,
   db: ChildDbClient = prisma
 ) {
-  if (process.env.APP_ENV === "test" && db === prisma) {
+  if (process.env["APP_ENV"] === "test" && db === prisma) {
     return withTestChildLock(parentProfileId, async () => {
       const children = getTestChildren(parentProfileId);
       const activeChildren = children.filter((child) => !child.deletedAt);

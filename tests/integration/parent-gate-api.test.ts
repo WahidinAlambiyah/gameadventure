@@ -1,13 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE as clearGate } from "@/app/api/v1/auth/parent-gate/route";
 import { POST as verifyGate } from "@/app/api/v1/auth/parent-gate/verify/route";
 import { GET as playStatus } from "@/app/api/v1/children/[childId]/play-status/route";
 import { GET as securityStatus } from "@/app/api/v1/parent/security/route";
 import { PUT as writePin } from "@/app/api/v1/parent/security/pin/route";
 import { GET as readSettings, PATCH as writeSettings } from "@/app/api/v1/parent/settings/route";
-import { resetTestParentPins } from "@/server/parent-gate/pinService";
+import { resetTestParentPins, verifyParentPin } from "@/server/parent-gate/pinService";
 import { resetTestParentSettings } from "@/server/parent/settings";
 import { resetTestChildren, seedTestChild } from "@/server/repositories/childRepository";
+import { ParentGateLockedError } from "@/server/errors/errors";
 
 const parentHeaders = {
   "x-test-user-id": "user-1",
@@ -113,6 +114,54 @@ describe("parent gate API", () => {
     expect(staleGate.status).toBe(403);
   });
 
+  it("keeps a valid gate token valid after failed attempts and successful verification", async () => {
+    const originalCookie = await setPinAndCookie();
+
+    const initiallyAllowed = await readSettings(
+      new Request("http://localhost/api/v1/parent/settings", {
+        headers: {
+          ...parentHeaders,
+          cookie: `bacangaji_parent_gate=${originalCookie}`
+        }
+      })
+    );
+    expect(initiallyAllowed.status).toBe(200);
+
+    const failedAttempt = await verifyGate(
+      jsonRequest("http://localhost/api/v1/auth/parent-gate/verify", {
+        pin: "0000"
+      })
+    );
+    expect(failedAttempt.status).toBe(403);
+
+    const afterFailedAttempt = await readSettings(
+      new Request("http://localhost/api/v1/parent/settings", {
+        headers: {
+          ...parentHeaders,
+          cookie: `bacangaji_parent_gate=${originalCookie}`
+        }
+      })
+    );
+    expect(afterFailedAttempt.status).toBe(200);
+
+    const successfulVerification = await verifyGate(
+      jsonRequest("http://localhost/api/v1/auth/parent-gate/verify", {
+        pin: "1234"
+      })
+    );
+    expect(successfulVerification.status).toBe(200);
+
+    const afterSuccessfulVerification = await readSettings(
+      new Request("http://localhost/api/v1/parent/settings", {
+        headers: {
+          ...parentHeaders,
+          cookie: `bacangaji_parent_gate=${originalCookie}`
+        }
+      })
+    );
+    expect(afterSuccessfulVerification.status).toBe(200);
+  });
+
   it("locks verification after five invalid attempts and emits Retry-After", async () => {
     await setPinAndCookie();
 
@@ -142,6 +191,29 @@ describe("parent gate API", () => {
       })
     );
     expect(stillLocked.status).toBe(429);
+  });
+
+  it("does not verify PIN hashes while the gate is locked", async () => {
+    await setPinAndCookie();
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      await verifyGate(
+        jsonRequest("http://localhost/api/v1/auth/parent-gate/verify", {
+          pin: "0000"
+        })
+      );
+    }
+
+    const verifier = vi.fn(async () => {
+      throw new Error("PIN hash verification should be skipped while locked.");
+    });
+
+    await expect(
+      verifyParentPin({ ...parentHeadersAsUser(), id: "user-1" }, "1234", {
+        verifyPinHash: verifier
+      })
+    ).rejects.toBeInstanceOf(ParentGateLockedError);
+    expect(verifier).not.toHaveBeenCalled();
   });
 
   it("verifies the gate, sanitizes returnTo, and reports safe status only", async () => {
@@ -265,7 +337,7 @@ describe("parent gate API", () => {
     });
 
     const owned = await playStatus(
-      new Request("http://localhost/api/v1/children/child-1/play-status", {
+      new Request("http://localhost/api/v1/children/child-1/play-status?activePlaySeconds=9999", {
         headers: parentHeaders
       }),
       { params: Promise.resolve({ childId: "child-1" }) }
@@ -274,6 +346,7 @@ describe("parent gate API", () => {
 
     expect(owned.status).toBe(200);
     expect(ownedBody.data.playStatus.allowed).toBe(true);
+    expect(ownedBody.data.playStatus.usedSeconds).toBe(0);
     expect(ownedBody.data.playStatus).not.toHaveProperty("pinHash");
 
     const otherParent = await playStatus(
@@ -300,5 +373,15 @@ describe("parent gate API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("bacangaji_parent_gate=");
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(response.headers.get("set-cookie")).toContain("Path=/");
   });
 });
+
+function parentHeadersAsUser() {
+  return {
+    email: parentHeaders["x-test-user-email"],
+    roles: ["PARENT" as const],
+    permissions: parentHeaders["x-test-permissions"].split(","),
+    parentProfileId: parentHeaders["x-test-parent-profile-id"]
+  };
+}

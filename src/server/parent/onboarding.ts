@@ -8,7 +8,7 @@ type BootstrapParentArgs = ParentBootstrapInput & {
 };
 
 export async function bootstrapParentForUser({ userId, displayName }: BootstrapParentArgs) {
-  if (process.env.APP_ENV === "test") {
+  if (process.env["APP_ENV"] === "test") {
     return {
       id: "parent-1",
       userId,

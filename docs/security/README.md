@@ -40,7 +40,8 @@ Parent gate note:
 
 - Parent PINs are exactly four digits and are hashed with Argon2id.
 - The parent-gate cookie is httpOnly, sameSite strict, HMAC-SHA256 signed, and expires after 15 minutes.
-- The token is bound to the authenticated user, parent profile, and PIN `updatedAt`.
+- The token is bound to the authenticated user, parent profile, and a separate-domain HMAC fingerprint of the current PIN hash.
+- Raw PIN hashes are never placed in the token payload.
 - Five failed PIN attempts lock the gate for 15 minutes and return `Retry-After`.
 - Parent PIN reset remains deferred until a reviewed reauthentication path is selected.
 
