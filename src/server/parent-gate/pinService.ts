@@ -21,6 +21,20 @@ type PinServiceOptions = {
   verifyPinHash?: PinVerifier;
 };
 
+type PersistedParentSecuritySetting = {
+  pinHash: string | null;
+  failedPinAttempts: number;
+  pinLockedUntil: Date | null;
+  lastPinVerifiedAt: Date | null;
+  updatedAt: Date;
+};
+
+type PinOutcome =
+  | { kind: "verified"; setting: PersistedParentSecuritySetting }
+  | { kind: "changed"; setting: PersistedParentSecuritySetting }
+  | { kind: "invalid" }
+  | { kind: "locked"; retryAfterSeconds: number };
+
 type ParentSecurityStatus = {
   pinConfigured: boolean;
   failedPinAttempts?: number;
@@ -76,6 +90,22 @@ function retryAfterSeconds(lockedUntil: Date, now = new Date()) {
 
 function isLocked(lockedUntil: Date | null, now = new Date()) {
   return Boolean(lockedUntil && lockedUntil.getTime() > now.getTime());
+}
+
+function effectiveFailedAttempts(setting: PersistedParentSecuritySetting, now = new Date()) {
+  return setting.pinLockedUntil && setting.pinLockedUntil.getTime() <= now.getTime()
+    ? 0
+    : setting.failedPinAttempts;
+}
+
+function throwFailedOutcome(outcome: PinOutcome): never {
+  if (outcome.kind === "locked") {
+    throw new ParentGateLockedError(
+      "Parent gate is temporarily locked.",
+      outcome.retryAfterSeconds
+    );
+  }
+  throw new ParentGateInvalidError();
 }
 
 function statusFromSetting(setting: {
@@ -214,12 +244,13 @@ export async function verifyParentPin(
       );
     }
     if (!(await verifyPinHash(setting.pinHash, pin))) {
-      setting.failedPinAttempts += 1;
+      setting.failedPinAttempts = effectiveFailedAttempts(setting) + 1;
       setting.updatedAt = new Date();
       if (setting.failedPinAttempts >= maxFailedPinAttempts) {
         setting.pinLockedUntil = new Date(Date.now() + lockoutSeconds * 1000);
         throw new ParentGateLockedError("Parent gate is temporarily locked.", lockoutSeconds);
       }
+      setting.pinLockedUntil = null;
       throw new ParentGateInvalidError();
     }
     setting.failedPinAttempts = 0;
@@ -236,22 +267,22 @@ export async function verifyParentPin(
     };
   }
 
-  return db.$transaction(
+  const outcome = await db.$transaction(
     async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
       const setting = await tx.parentSecuritySetting.findUnique({
         where: { parentProfileId: user.parentProfileId! }
       });
-      if (!setting?.pinHash) throw new ParentGateInvalidError();
+      if (!setting?.pinHash) return { kind: "invalid" } satisfies PinOutcome;
       if (isLocked(setting.pinLockedUntil)) {
-        throw new ParentGateLockedError(
-          "Parent gate is temporarily locked.",
-          retryAfterSeconds(setting.pinLockedUntil!)
-        );
+        return {
+          kind: "locked",
+          retryAfterSeconds: retryAfterSeconds(setting.pinLockedUntil!)
+        } satisfies PinOutcome;
       }
 
       if (!(await verifyPinHash(setting.pinHash, pin))) {
-        const failedPinAttempts = setting.failedPinAttempts + 1;
+        const failedPinAttempts = effectiveFailedAttempts(setting) + 1;
         const lockedUntil =
           failedPinAttempts >= maxFailedPinAttempts
             ? new Date(Date.now() + lockoutSeconds * 1000)
@@ -278,9 +309,12 @@ export async function verifyParentPin(
         );
 
         if (lockedUntil) {
-          throw new ParentGateLockedError("Parent gate is temporarily locked.", lockoutSeconds);
+          return {
+            kind: "locked",
+            retryAfterSeconds: lockoutSeconds
+          } satisfies PinOutcome;
         }
-        throw new ParentGateInvalidError();
+        return { kind: "invalid" } satisfies PinOutcome;
       }
 
       const updated = await tx.parentSecuritySetting.update({
@@ -301,74 +335,163 @@ export async function verifyParentPin(
         tx
       );
 
-      return {
-        token: createParentGateToken({
-          userId: user.id,
-          parentProfileId: user.parentProfileId!,
-          pinFingerprint: parentPinFingerprint(updated.pinHash!)
-        }),
-        status: statusFromSetting(updated)
-      };
+      return { kind: "verified", setting: updated } satisfies PinOutcome;
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
   );
+
+  if (outcome.kind !== "verified") throwFailedOutcome(outcome);
+
+  return {
+    token: createParentGateToken({
+      userId: user.id,
+      parentProfileId: user.parentProfileId!,
+      pinFingerprint: parentPinFingerprint(outcome.setting.pinHash!)
+    }),
+    status: statusFromSetting(outcome.setting)
+  };
 }
 
 export async function changeParentPin(
   user: CurrentUser,
   currentPin: string,
   pin: string,
-  confirmPin: string
+  confirmPin: string,
+  options: PinServiceOptions = {}
 ) {
   if (currentPin === pin)
     throw new ValidationError("New PIN must be different from the current PIN.");
-  await verifyParentPin(user, currentPin);
   assertPinPair(pin, confirmPin);
   const pinHash = await hashParentPin(pin);
   if (!user.parentProfileId) throw new ValidationError("Parent profile is required.");
+  const db = options.db ?? prisma;
+  const verifyPinHash = options.verifyPinHash ?? verifySecret;
 
-  const setting =
-    process.env["APP_ENV"] === "test"
-      ? (() => {
-          const testSetting = getTestSetting(user.parentProfileId!);
-          testSetting.pinHash = pinHash;
-          testSetting.failedPinAttempts = 0;
-          testSetting.pinLockedUntil = null;
-          testSetting.lastPinVerifiedAt = new Date();
-          testSetting.updatedAt = new Date();
-          return testSetting;
-        })()
-      : await prisma.parentSecuritySetting.update({
-          where: { parentProfileId: user.parentProfileId },
+  if (process.env["APP_ENV"] === "test" && !options.db) {
+    const setting = getTestSetting(user.parentProfileId);
+    if (!setting.pinHash) throw new ParentGateInvalidError();
+    if (isLocked(setting.pinLockedUntil)) {
+      throw new ParentGateLockedError(
+        "Parent gate is temporarily locked.",
+        retryAfterSeconds(setting.pinLockedUntil!)
+      );
+    }
+    if (!(await verifyPinHash(setting.pinHash, currentPin))) {
+      setting.failedPinAttempts = effectiveFailedAttempts(setting) + 1;
+      setting.updatedAt = new Date();
+      if (setting.failedPinAttempts >= maxFailedPinAttempts) {
+        setting.pinLockedUntil = new Date(Date.now() + lockoutSeconds * 1000);
+        throw new ParentGateLockedError("Parent gate is temporarily locked.", lockoutSeconds);
+      }
+      setting.pinLockedUntil = null;
+      throw new ParentGateInvalidError();
+    }
+    setting.pinHash = pinHash;
+    setting.failedPinAttempts = 0;
+    setting.pinLockedUntil = null;
+    setting.lastPinVerifiedAt = new Date();
+    setting.updatedAt = new Date();
+    return {
+      token: createParentGateToken({
+        userId: user.id,
+        parentProfileId: user.parentProfileId,
+        pinFingerprint: parentPinFingerprint(setting.pinHash)
+      }),
+      status: statusFromSetting(setting)
+    };
+  }
+
+  const outcome = await db.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
+      const setting = await tx.parentSecuritySetting.findUnique({
+        where: { parentProfileId: user.parentProfileId! }
+      });
+      if (!setting?.pinHash) return { kind: "invalid" } satisfies PinOutcome;
+      if (isLocked(setting.pinLockedUntil)) {
+        return {
+          kind: "locked",
+          retryAfterSeconds: retryAfterSeconds(setting.pinLockedUntil!)
+        } satisfies PinOutcome;
+      }
+
+      if (!(await verifyPinHash(setting.pinHash, currentPin))) {
+        const failedPinAttempts = effectiveFailedAttempts(setting) + 1;
+        const lockedUntil =
+          failedPinAttempts >= maxFailedPinAttempts
+            ? new Date(Date.now() + lockoutSeconds * 1000)
+            : null;
+
+        await tx.parentSecuritySetting.update({
+          where: { parentProfileId: user.parentProfileId! },
           data: {
-            pinHash,
-            failedPinAttempts: 0,
-            pinLockedUntil: null,
-            lastPinVerifiedAt: new Date()
+            failedPinAttempts,
+            pinLockedUntil: lockedUntil
           }
         });
+        await writeSecurityEvent(
+          {
+            actorUserId: user.id,
+            parentProfileId: user.parentProfileId,
+            eventType: lockedUntil ? "PARENT_GATE_LOCKED" : "PARENT_GATE_FAILED",
+            metadata: {
+              category: "invalid_pin_change",
+              ...(lockedUntil ? { lockedUntil: lockedUntil.toISOString() } : {})
+            }
+          },
+          tx
+        );
 
-  if (process.env["APP_ENV"] !== "test") {
-    await writeSecurityEvent({
-      actorUserId: user.id,
-      parentProfileId: user.parentProfileId,
-      eventType: "PARENT_PIN_CHANGED",
-      metadata: { category: "success" }
-    });
-    await writeAuditEvent({
-      actorUserId: user.id,
-      parentProfileId: user.parentProfileId,
-      action: "PARENT_PIN_CHANGED",
-      metadata: { changed: ["pinConfigured"] }
-    });
-  }
+        if (lockedUntil) {
+          return {
+            kind: "locked",
+            retryAfterSeconds: lockoutSeconds
+          } satisfies PinOutcome;
+        }
+        return { kind: "invalid" } satisfies PinOutcome;
+      }
+
+      const updated = await tx.parentSecuritySetting.update({
+        where: { parentProfileId: user.parentProfileId },
+        data: {
+          pinHash,
+          failedPinAttempts: 0,
+          pinLockedUntil: null,
+          lastPinVerifiedAt: new Date()
+        }
+      });
+      await writeSecurityEvent(
+        {
+          actorUserId: user.id,
+          parentProfileId: user.parentProfileId,
+          eventType: "PARENT_PIN_CHANGED",
+          metadata: { category: "success" }
+        },
+        tx
+      );
+      await writeAuditEvent(
+        {
+          actorUserId: user.id,
+          parentProfileId: user.parentProfileId,
+          action: "PARENT_PIN_CHANGED",
+          metadata: { changed: ["pinConfigured"] }
+        },
+        tx
+      );
+
+      return { kind: "changed", setting: updated } satisfies PinOutcome;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
+
+  if (outcome.kind !== "changed") throwFailedOutcome(outcome);
 
   return {
     token: createParentGateToken({
       userId: user.id,
       parentProfileId: user.parentProfileId,
-      pinFingerprint: parentPinFingerprint(setting.pinHash!)
+      pinFingerprint: parentPinFingerprint(outcome.setting.pinHash!)
     }),
-    status: statusFromSetting(setting)
+    status: statusFromSetting(outcome.setting)
   };
 }

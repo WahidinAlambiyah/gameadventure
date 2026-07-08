@@ -27,6 +27,9 @@ Phase 1B adds a server-enforced parent gate for sensitive parent controls.
 - Five invalid PIN attempts lock the parent gate for 15 minutes.
 - Locked responses return HTTP `429`, code `PARENT_GATE_LOCKED`, and `Retry-After`.
 - A locked PIN is not rechecked until the lockout expires.
+- Once a lockout expires, the next invalid PIN starts a fresh failure cycle at attempt 1.
+- Invalid and locked outcomes are returned from the parent-scoped transaction first, then converted to API errors after failed-attempt state and security events are committed.
+- PIN changes verify the current PIN and update the new PIN hash in one parent-scoped advisory-lock transaction.
 
 ## Server Enforcement
 
