@@ -11,6 +11,7 @@ const parentId = "parent-1";
 const otherParentId = "parent-2";
 const firstLevelId = "33333333-3333-4333-8333-333333333331";
 const secondLevelId = "33333333-3333-4333-8333-333333333332";
+const thirdLevelId = "33333333-3333-4333-8333-333333333333";
 
 const parentHeaders = {
   "x-test-user-id": "user-1",
@@ -119,6 +120,31 @@ describe("child adventure map and play session API", () => {
     expect(secondLevel.state).toBe("LOCKED");
   });
 
+  it("uses zone order before level order for multi-zone progression", async () => {
+    adventurePlayTest.seedSecondZone();
+    adventurePlayTest.completeLevel(childId, firstLevelId);
+
+    const afterFirst = await adventureMap(
+      request("http://localhost/api/v1/children/child-1/adventure-map"),
+      childContext({ childId })
+    );
+    const afterFirstBody = await afterFirst.json();
+
+    expect(afterFirstBody.data.tracks[0].zones[0].levels[1].id).toBe(secondLevelId);
+    expect(afterFirstBody.data.tracks[0].zones[0].levels[1].state).toBe("AVAILABLE");
+    expect(afterFirstBody.data.tracks[0].zones[1].levels[0].id).toBe(thirdLevelId);
+    expect(afterFirstBody.data.tracks[0].zones[1].levels[0].state).toBe("LOCKED");
+
+    adventurePlayTest.completeLevel(childId, secondLevelId);
+    const afterSecond = await adventureMap(
+      request("http://localhost/api/v1/children/child-1/adventure-map"),
+      childContext({ childId })
+    );
+    const afterSecondBody = await afterSecond.json();
+
+    expect(afterSecondBody.data.tracks[0].zones[1].levels[0].state).toBe("AVAILABLE");
+  });
+
   it("starts a session and closes the previous incomplete session for that child", async () => {
     const first = await start();
     expect(first.response.status).toBe(201);
@@ -131,6 +157,21 @@ describe("child adventure map and play session API", () => {
     expect(sessions).toHaveLength(2);
     expect(sessions[0].completedAt).toBe("2026-07-08T00:01:00.000Z");
     expect(sessions[1].completedAt).toBeNull();
+  });
+
+  it("allows session start after the normal daily limit when parent override is active", async () => {
+    adventurePlayTest.seedUsage({
+      parentProfileId: parentId,
+      childProfileId: childId,
+      activePlaySeconds: 50,
+      dailyLimitSeconds: 50,
+      parentOverrideUntil: "2026-07-08T00:10:00.000Z"
+    });
+
+    const { response, body } = await start();
+
+    expect(response.status).toBe(201);
+    expect(body.data.session.id).toEqual(expect.any(String));
   });
 
   it("credits zero seconds on the first heartbeat", async () => {
@@ -193,6 +234,31 @@ describe("child adventure map and play session API", () => {
     expect(result.body.data.heartbeat.remainingSeconds).toBe(0);
     expect(result.body.data.heartbeat.allowed).toBe(false);
     expect(session?.completedAt).toBe("2026-07-08T00:01:01.000Z");
+  });
+
+  it("continues heartbeat during active override without closing at the normal limit", async () => {
+    adventurePlayTest.seedUsage({
+      parentProfileId: parentId,
+      childProfileId: childId,
+      activePlaySeconds: 48,
+      dailyLimitSeconds: 50,
+      parentOverrideUntil: "2026-07-08T00:10:00.000Z"
+    });
+    const started = await start();
+    const sessionId = started.body.data.session.id;
+
+    adventurePlayTest.setNow("2026-07-08T00:00:01.000Z");
+    await heartbeat(sessionId);
+    adventurePlayTest.setNow("2026-07-08T00:01:01.000Z");
+    const result = await heartbeat(sessionId);
+    const session = adventurePlayTest.sessions().find((item) => item.id === sessionId);
+
+    expect(result.body.data.heartbeat.creditedSeconds).toBe(45);
+    expect(result.body.data.heartbeat.usedSeconds).toBe(93);
+    expect(result.body.data.heartbeat.remainingSeconds).toBe(0);
+    expect(result.body.data.heartbeat.allowed).toBe(true);
+    expect(result.body.data.heartbeat.reason).toBe("PARENT_OVERRIDE");
+    expect(session?.completedAt).toBeNull();
   });
 
   it("ends a session idempotently without progress, reward, energy, or attempt writes", async () => {

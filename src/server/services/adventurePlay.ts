@@ -1,7 +1,6 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/server/database/prisma";
 import { findChildByIdAndParentId } from "@/server/repositories/childRepository";
 import {
@@ -12,7 +11,8 @@ import {
 import { DomainError, NotFoundError } from "@/server/errors/errors";
 
 export type LevelState = "AVAILABLE" | "LOCKED" | "COMPLETED";
-export type HeartbeatReason = "AVAILABLE" | "DAILY_LIMIT_REACHED" | "SESSION_COMPLETED";
+export type HeartbeatReason =
+  "AVAILABLE" | "DAILY_LIMIT_REACHED" | "PARENT_OVERRIDE" | "SESSION_COMPLETED";
 
 export type AdventureLevel = {
   id: string;
@@ -107,6 +107,7 @@ type StoredDailyUsage = {
   timezone: string;
   lastHeartbeatAt: Date | null;
   dailyLimitSeconds: number;
+  parentOverrideUntil: Date | null;
 };
 
 type StoredSession = {
@@ -124,7 +125,10 @@ const testState = {
   progress: [] as StoredProgress[],
   sessions: [] as StoredSession[],
   usages: [] as StoredDailyUsage[],
-  settings: new Map<string, { dailyLimitSeconds: number; timezone: string }>(),
+  settings: new Map<
+    string,
+    { dailyLimitSeconds: number; timezone: string; parentOverrideUntil: Date | null }
+  >(),
   now: undefined as Date | undefined,
   nextSessionNumber: 1,
   locks: new Map<string, Promise<void>>()
@@ -191,6 +195,24 @@ function orderBySortThenCreated<T extends { sortOrder?: number; createdAt: Date;
   });
 }
 
+function orderLevelsByPublishedZone(
+  publishedZones: StoredZone[],
+  levels: StoredLevel[],
+  trackId: string
+) {
+  return publishedZones.flatMap((zone) =>
+    orderBySortThenCreated(
+      levels.filter(
+        (level) =>
+          level.trackId === trackId &&
+          level.zoneId === zone.id &&
+          level.status === "PUBLISHED" &&
+          !level.deletedAt
+      )
+    )
+  );
+}
+
 function buildAdventureMap(
   tracks: StoredTrack[],
   zones: StoredZone[],
@@ -216,16 +238,7 @@ function buildAdventureMap(
           (zone) => zone.trackId === track.id && zone.status === "PUBLISHED" && !zone.deletedAt
         )
       );
-      const publishedZoneIds = new Set(publishedZones.map((zone) => zone.id));
-      const trackLevels = orderBySortThenCreated(
-        levels.filter(
-          (level) =>
-            level.trackId === track.id &&
-            publishedZoneIds.has(level.zoneId) &&
-            level.status === "PUBLISHED" &&
-            !level.deletedAt
-        )
-      );
+      const trackLevels = orderLevelsByPublishedZone(publishedZones, levels, track.id);
       const stateByLevelId = new Map<string, LevelState>();
 
       trackLevels.forEach((level, index) => {
@@ -285,6 +298,7 @@ async function assertOwnedChildInDb(db: DbClient, parentProfileId: string, child
 }
 
 async function lockChild(db: DbClient, childId: string) {
+  // The child advisory lock serializes per-child operations; Read Committed observes prior commits after waiting.
   await db.$queryRaw`
     SELECT pg_advisory_xact_lock(hashtextextended(${childId}, 17))
   `;
@@ -433,7 +447,8 @@ function getTestSetting(parentProfileId: string) {
   if (!testState.settings.has(parentProfileId)) {
     testState.settings.set(parentProfileId, {
       dailyLimitSeconds: 30 * 60,
-      timezone: "Asia/Jakarta"
+      timezone: "Asia/Jakarta",
+      parentOverrideUntil: null
     });
   }
   return testState.settings.get(parentProfileId)!;
@@ -455,15 +470,38 @@ function getTestDailyUsage(parentProfileId: string, childId: string, currentTime
       sessionCount: 0,
       timezone: setting.timezone,
       lastHeartbeatAt: null,
-      dailyLimitSeconds: setting.dailyLimitSeconds
+      dailyLimitSeconds: setting.dailyLimitSeconds,
+      parentOverrideUntil: setting.parentOverrideUntil
     };
     testState.usages.push(usage);
   } else {
     usage.timezone = setting.timezone;
     usage.dailyLimitSeconds = setting.dailyLimitSeconds;
+    usage.parentOverrideUntil = setting.parentOverrideUntil;
   }
 
   return usage;
+}
+
+function screenTimePolicyForUsage(usage: StoredDailyUsage, currentTime: Date) {
+  return evaluateScreenTimePolicy({
+    dailyLimitSeconds: usage.dailyLimitSeconds,
+    activePlaySeconds: usage.activePlaySeconds,
+    timezone: usage.timezone,
+    now: currentTime,
+    parentOverrideUntil: usage.parentOverrideUntil
+  });
+}
+
+function heartbeatCreditSeconds(
+  usage: StoredDailyUsage,
+  elapsedSeconds: number,
+  currentTime: Date
+) {
+  const policy = screenTimePolicyForUsage(usage, currentTime);
+  if (!policy.allowed) return 0;
+  if (policy.overrideActive) return Math.min(elapsedSeconds, 45);
+  return Math.min(elapsedSeconds, 45, policy.remainingSeconds);
 }
 
 function heartbeatResponse(
@@ -472,12 +510,7 @@ function heartbeatResponse(
   creditedSeconds: number,
   forceCompleted = false
 ): HeartbeatResult {
-  const policy = evaluateScreenTimePolicy({
-    dailyLimitSeconds: usage.dailyLimitSeconds,
-    activePlaySeconds: usage.activePlaySeconds,
-    timezone: usage.timezone,
-    now: currentTime
-  });
+  const policy = screenTimePolicyForUsage(usage, currentTime);
 
   return {
     allowed: forceCompleted ? false : policy.allowed,
@@ -501,12 +534,13 @@ async function getOrCreateDailyUsage(
     create: { parentProfileId },
     select: {
       dailyLimitSeconds: true,
-      timezone: true
+      timezone: true,
+      parentOverrideUntil: true
     }
   });
   const usageDate = usageDateAsUtcDate(currentTime, setting.timezone);
 
-  return db.dailyPlayUsage.upsert({
+  const usage = await db.dailyPlayUsage.upsert({
     where: {
       childProfileId_usageDate: {
         childProfileId: childId,
@@ -535,6 +569,11 @@ async function getOrCreateDailyUsage(
       dailyLimitSeconds: true
     }
   });
+
+  return {
+    ...usage,
+    parentOverrideUntil: setting.parentOverrideUntil
+  };
 }
 
 export async function getAdventureMapForChild(parentProfileId: string, childId: string) {
@@ -555,7 +594,8 @@ export async function startGameSession(
 
       const currentTime = now();
       const usage = getTestDailyUsage(parentProfileId, childId, currentTime);
-      if (usage.activePlaySeconds >= usage.dailyLimitSeconds) {
+      const policy = screenTimePolicyForUsage(usage, currentTime);
+      if (!policy.allowed) {
         throw new DomainError("Daily play limit has been reached.");
       }
 
@@ -579,60 +619,58 @@ export async function startGameSession(
     });
   }
 
-  const session = await prisma.$transaction(
-    async (tx) => {
-      await lockChild(tx, childId);
-      const map = await getMapAfterOwnership(parentProfileId, childId, tx);
-      const level = findLevelInMap(map, levelId);
-      if (!level) throw new DomainError("Level is not published.");
-      if (level.state === "LOCKED") throw new DomainError("Level is locked.");
+  const session = await prisma.$transaction(async (tx) => {
+    await lockChild(tx, childId);
+    const map = await getMapAfterOwnership(parentProfileId, childId, tx);
+    const level = findLevelInMap(map, levelId);
+    if (!level) throw new DomainError("Level is not published.");
+    if (level.state === "LOCKED") throw new DomainError("Level is locked.");
 
-      const currentTime = now();
-      const usage = await getOrCreateDailyUsage(tx, parentProfileId, childId, currentTime);
-      if (usage.activePlaySeconds >= usage.dailyLimitSeconds) {
-        throw new DomainError("Daily play limit has been reached.");
+    const currentTime = now();
+    const usage = await getOrCreateDailyUsage(tx, parentProfileId, childId, currentTime);
+    const policy = screenTimePolicyForUsage(usage, currentTime);
+    if (!policy.allowed) {
+      throw new DomainError("Daily play limit has been reached.");
+    }
+
+    await tx.gameSession.updateMany({
+      where: {
+        childProfileId: childId,
+        completedAt: null
+      },
+      data: { completedAt: currentTime }
+    });
+
+    const created = await tx.gameSession.create({
+      data: {
+        childProfileId: childId,
+        levelId,
+        startedAt: currentTime
+      },
+      select: {
+        id: true,
+        childProfileId: true,
+        levelId: true,
+        startedAt: true,
+        completedAt: true
       }
+    });
 
-      await tx.gameSession.updateMany({
-        where: {
+    await tx.dailyPlayUsage.update({
+      where: {
+        childProfileId_usageDate: {
           childProfileId: childId,
-          completedAt: null
-        },
-        data: { completedAt: currentTime }
-      });
-
-      const created = await tx.gameSession.create({
-        data: {
-          childProfileId: childId,
-          levelId,
-          startedAt: currentTime
-        },
-        select: {
-          id: true,
-          childProfileId: true,
-          levelId: true,
-          startedAt: true,
-          completedAt: true
+          usageDate: usage.usageDate
         }
-      });
+      },
+      data: {
+        lastHeartbeatAt: currentTime,
+        sessionCount: { increment: 1 }
+      }
+    });
 
-      await tx.dailyPlayUsage.update({
-        where: {
-          childProfileId_usageDate: {
-            childProfileId: childId,
-            usageDate: usage.usageDate
-          }
-        },
-        data: {
-          lastHeartbeatAt: currentTime,
-          sessionCount: { increment: 1 }
-        }
-      });
-
-      return created;
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+    return created;
+  });
 
   return sanitizeSession({
     id: session.id,
@@ -666,13 +704,13 @@ export async function heartbeatGameSession(
           0,
           Math.floor((currentTime.getTime() - previousHeartbeat.getTime()) / 1000)
         );
-        const remainingSeconds = Math.max(0, usage.dailyLimitSeconds - usage.activePlaySeconds);
-        creditedSeconds = Math.min(elapsedSeconds, 45, remainingSeconds);
+        creditedSeconds = heartbeatCreditSeconds(usage, elapsedSeconds, currentTime);
         usage.activePlaySeconds += creditedSeconds;
       }
 
       usage.lastHeartbeatAt = currentTime;
-      if (usage.activePlaySeconds >= usage.dailyLimitSeconds) {
+      const policy = screenTimePolicyForUsage(usage, currentTime);
+      if (!policy.overrideActive && usage.activePlaySeconds >= usage.dailyLimitSeconds) {
         session.completedAt = currentTime;
       }
 
@@ -680,74 +718,78 @@ export async function heartbeatGameSession(
     });
   }
 
-  return prisma.$transaction(
-    async (tx) => {
-      await lockChild(tx, childId);
-      await assertOwnedChildInDb(tx, parentProfileId, childId);
-      const currentTime = now();
-      const usage = await getOrCreateDailyUsage(tx, parentProfileId, childId, currentTime);
-      const session = await tx.gameSession.findFirst({
+  return prisma.$transaction(async (tx) => {
+    await lockChild(tx, childId);
+    await assertOwnedChildInDb(tx, parentProfileId, childId);
+    const currentTime = now();
+    const usage = await getOrCreateDailyUsage(tx, parentProfileId, childId, currentTime);
+    const session = await tx.gameSession.findFirst({
+      where: {
+        id: sessionId,
+        childProfileId: childId
+      },
+      select: {
+        id: true,
+        startedAt: true,
+        completedAt: true
+      }
+    });
+    if (!session) throw new NotFoundError();
+    if (session.completedAt) return heartbeatResponse(usage, currentTime, 0, true);
+
+    let creditedSeconds = 0;
+    if (usage.lastHeartbeatAt && usage.lastHeartbeatAt.getTime() > session.startedAt.getTime()) {
+      const elapsedSeconds = Math.max(
+        0,
+        Math.floor((currentTime.getTime() - usage.lastHeartbeatAt.getTime()) / 1000)
+      );
+      creditedSeconds = heartbeatCreditSeconds(usage, elapsedSeconds, currentTime);
+    }
+
+    const updatedUsage = await tx.dailyPlayUsage.update({
+      where: {
+        childProfileId_usageDate: {
+          childProfileId: childId,
+          usageDate: usage.usageDate
+        }
+      },
+      data: {
+        activePlaySeconds: { increment: creditedSeconds },
+        lastHeartbeatAt: currentTime
+      },
+      select: {
+        parentProfileId: true,
+        childProfileId: true,
+        usageDate: true,
+        activePlaySeconds: true,
+        sessionCount: true,
+        timezone: true,
+        lastHeartbeatAt: true,
+        dailyLimitSeconds: true
+      }
+    });
+    const updatedUsageWithOverride = {
+      ...updatedUsage,
+      parentOverrideUntil: usage.parentOverrideUntil
+    };
+
+    const policy = screenTimePolicyForUsage(updatedUsageWithOverride, currentTime);
+    if (
+      !policy.overrideActive &&
+      updatedUsage.activePlaySeconds >= updatedUsage.dailyLimitSeconds
+    ) {
+      await tx.gameSession.updateMany({
         where: {
           id: sessionId,
-          childProfileId: childId
+          childProfileId: childId,
+          completedAt: null
         },
-        select: {
-          id: true,
-          startedAt: true,
-          completedAt: true
-        }
+        data: { completedAt: currentTime }
       });
-      if (!session) throw new NotFoundError();
-      if (session.completedAt) return heartbeatResponse(usage, currentTime, 0, true);
+    }
 
-      let creditedSeconds = 0;
-      if (usage.lastHeartbeatAt && usage.lastHeartbeatAt.getTime() > session.startedAt.getTime()) {
-        const elapsedSeconds = Math.max(
-          0,
-          Math.floor((currentTime.getTime() - usage.lastHeartbeatAt.getTime()) / 1000)
-        );
-        const remainingSeconds = Math.max(0, usage.dailyLimitSeconds - usage.activePlaySeconds);
-        creditedSeconds = Math.min(elapsedSeconds, 45, remainingSeconds);
-      }
-
-      const updatedUsage = await tx.dailyPlayUsage.update({
-        where: {
-          childProfileId_usageDate: {
-            childProfileId: childId,
-            usageDate: usage.usageDate
-          }
-        },
-        data: {
-          activePlaySeconds: { increment: creditedSeconds },
-          lastHeartbeatAt: currentTime
-        },
-        select: {
-          parentProfileId: true,
-          childProfileId: true,
-          usageDate: true,
-          activePlaySeconds: true,
-          sessionCount: true,
-          timezone: true,
-          lastHeartbeatAt: true,
-          dailyLimitSeconds: true
-        }
-      });
-
-      if (updatedUsage.activePlaySeconds >= updatedUsage.dailyLimitSeconds) {
-        await tx.gameSession.updateMany({
-          where: {
-            id: sessionId,
-            childProfileId: childId,
-            completedAt: null
-          },
-          data: { completedAt: currentTime }
-        });
-      }
-
-      return heartbeatResponse(updatedUsage, currentTime, creditedSeconds);
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+    return heartbeatResponse(updatedUsageWithOverride, currentTime, creditedSeconds);
+  });
 }
 
 export async function endGameSession(
@@ -767,40 +809,37 @@ export async function endGameSession(
     });
   }
 
-  const session = await prisma.$transaction(
-    async (tx) => {
-      await lockChild(tx, childId);
-      await assertOwnedChildInDb(tx, parentProfileId, childId);
-      const existing = await tx.gameSession.findFirst({
-        where: {
-          id: sessionId,
-          childProfileId: childId
-        },
-        select: {
-          id: true,
-          childProfileId: true,
-          levelId: true,
-          startedAt: true,
-          completedAt: true
-        }
-      });
-      if (!existing) throw new NotFoundError();
-      if (existing.completedAt) return existing;
+  const session = await prisma.$transaction(async (tx) => {
+    await lockChild(tx, childId);
+    await assertOwnedChildInDb(tx, parentProfileId, childId);
+    const existing = await tx.gameSession.findFirst({
+      where: {
+        id: sessionId,
+        childProfileId: childId
+      },
+      select: {
+        id: true,
+        childProfileId: true,
+        levelId: true,
+        startedAt: true,
+        completedAt: true
+      }
+    });
+    if (!existing) throw new NotFoundError();
+    if (existing.completedAt) return existing;
 
-      return tx.gameSession.update({
-        where: { id: sessionId },
-        data: { completedAt: now() },
-        select: {
-          id: true,
-          childProfileId: true,
-          levelId: true,
-          startedAt: true,
-          completedAt: true
-        }
-      });
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+    return tx.gameSession.update({
+      where: { id: sessionId },
+      data: { completedAt: now() },
+      select: {
+        id: true,
+        childProfileId: true,
+        levelId: true,
+        startedAt: true,
+        completedAt: true
+      }
+    });
+  });
 
   return sanitizeSession({
     id: session.id,
@@ -829,11 +868,19 @@ export const adventurePlayTest = {
   },
   setParentSetting(
     parentProfileId: string,
-    setting: { dailyLimitSeconds: number; timezone?: string }
+    setting: {
+      dailyLimitSeconds: number;
+      timezone?: string;
+      parentOverrideUntil?: string | Date | null;
+    }
   ) {
     testState.settings.set(parentProfileId, {
       dailyLimitSeconds: setting.dailyLimitSeconds,
-      timezone: setting.timezone ?? "Asia/Jakarta"
+      timezone: setting.timezone ?? "Asia/Jakarta",
+      parentOverrideUntil:
+        typeof setting.parentOverrideUntil === "string"
+          ? new Date(setting.parentOverrideUntil)
+          : (setting.parentOverrideUntil ?? null)
     });
   },
   seedContent(input?: {
@@ -887,6 +934,31 @@ export const adventurePlayTest = {
       }
     );
   },
+  seedSecondZone() {
+    const trackId = "11111111-1111-4111-8111-111111111111";
+    const zoneId = "22222222-2222-4222-8222-222222222223";
+    testState.zones.push({
+      id: zoneId,
+      trackId,
+      slug: "zone-two",
+      title: "Zone Two",
+      sortOrder: 2,
+      status: "PUBLISHED",
+      createdAt: new Date("2026-07-08T00:02:00.000Z"),
+      deletedAt: null
+    });
+    testState.levels.push({
+      id: "33333333-3333-4333-8333-333333333333",
+      trackId,
+      zoneId,
+      slug: "level-three",
+      title: "Level Three",
+      sortOrder: 1,
+      status: "PUBLISHED",
+      createdAt: new Date("2026-07-08T00:03:00.000Z"),
+      deletedAt: null
+    });
+  },
   completeLevel(childProfileId: string, levelId: string) {
     testState.progress.push({
       childProfileId,
@@ -901,12 +973,18 @@ export const adventurePlayTest = {
     dailyLimitSeconds: number;
     lastHeartbeatAt?: string | Date | null;
     timezone?: string;
+    parentOverrideUntil?: string | Date | null;
   }) {
     const currentTime = now();
     const timezone = input.timezone ?? "Asia/Jakarta";
+    const parentOverrideUntil =
+      typeof input.parentOverrideUntil === "string"
+        ? new Date(input.parentOverrideUntil)
+        : (input.parentOverrideUntil ?? null);
     testState.settings.set(input.parentProfileId, {
       dailyLimitSeconds: input.dailyLimitSeconds,
-      timezone
+      timezone,
+      parentOverrideUntil
     });
     testState.usages.push({
       parentProfileId: input.parentProfileId,
@@ -919,7 +997,8 @@ export const adventurePlayTest = {
         typeof input.lastHeartbeatAt === "string"
           ? new Date(input.lastHeartbeatAt)
           : (input.lastHeartbeatAt ?? null),
-      dailyLimitSeconds: input.dailyLimitSeconds
+      dailyLimitSeconds: input.dailyLimitSeconds,
+      parentOverrideUntil
     });
   },
   sessions() {

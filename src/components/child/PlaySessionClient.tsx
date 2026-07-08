@@ -39,6 +39,12 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
     let cancelled = false;
     let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
+    function stopHeartbeat() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = undefined;
+      sessionIdRef.current = null;
+    }
+
     async function heartbeat(sessionId: string) {
       const response = await fetch(
         `/api/v1/children/${encodeURIComponent(childId)}/game-sessions/${encodeURIComponent(
@@ -56,6 +62,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
       if (cancelled) return;
 
       if (!response.ok || !heartbeatData) {
+        stopHeartbeat();
         setState({
           status: "error",
           message: body?.error?.message ?? "Sesi bermain tidak dapat diperbarui."
@@ -64,6 +71,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
       }
 
       if (!heartbeatData.allowed) {
+        stopHeartbeat();
         setState({
           status: "rest",
           message: "Waktunya Istirahat, Petualang!",
@@ -113,7 +121,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
 
     return () => {
       cancelled = true;
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      stopHeartbeat();
     };
   }, [childId, levelId]);
 
