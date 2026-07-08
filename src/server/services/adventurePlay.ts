@@ -300,7 +300,9 @@ async function assertOwnedChildInDb(db: DbClient, parentProfileId: string, child
 async function lockChild(db: DbClient, childId: string) {
   // The child advisory lock serializes per-child operations; Read Committed observes prior commits after waiting.
   await db.$queryRaw`
-    SELECT pg_advisory_xact_lock(hashtextextended(${childId}, 17))
+    SELECT pg_advisory_xact_lock(
+      hashtextextended(${childId}, 17)
+    )::text AS lock_acquired
   `;
 }
 

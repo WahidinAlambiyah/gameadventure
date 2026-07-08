@@ -159,8 +159,10 @@ export async function createChildForParent(
     return await db.$transaction(
       async (tx) => {
         await tx.$queryRaw`
-          SELECT pg_advisory_xact_lock(hashtextextended(${parentProfileId}, 0))
-        `;
+  SELECT pg_advisory_xact_lock(
+    hashtextextended(${parentProfileId}, 0)
+  )::text AS lock_acquired
+`;
 
         const activeChildren = await tx.childProfile.count({
           where: {

@@ -56,7 +56,7 @@ function createFakeDb(initial: FakeSetting, options: { failAuditCreate?: boolean
       const securitySnapshot = [...securityEvents];
       const auditSnapshot = [...auditEvents];
       const tx = {
-        $queryRaw: vi.fn(async () => [{ pg_advisory_xact_lock: "" }]),
+        $queryRaw: vi.fn(async () => [{ lock_acquired: "" }]),
         parentSecuritySetting: {
           findUnique: vi.fn(async () => cloneSetting(setting)),
           update: vi.fn(async ({ data }: { data: Partial<FakeSetting> }) => {
