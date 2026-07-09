@@ -175,7 +175,11 @@ export async function setInitialParentPin(
   }
 
   return db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
+    await tx.$queryRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtextextended(${user.parentProfileId}, 1)
+  )::text AS lock_acquired
+`;
     const existing = await tx.parentSecuritySetting.upsert({
       where: { parentProfileId: user.parentProfileId },
       update: {},
@@ -270,7 +274,11 @@ export async function verifyParentPin(
     // Parent-scoped advisory locking serializes operations per parent; after waiting,
     // this read must see the previous committed transaction. Serializable would
     // require explicit retry handling for serialization failures.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
+    await tx.$queryRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtextextended(${user.parentProfileId}, 1)
+  )::text AS lock_acquired
+`;
     const setting = await tx.parentSecuritySetting.findUnique({
       where: { parentProfileId: user.parentProfileId! }
     });
@@ -404,7 +412,11 @@ export async function changeParentPin(
     // Parent-scoped advisory locking serializes operations per parent; after waiting,
     // this read must see the previous committed transaction. Serializable would
     // require explicit retry handling for serialization failures.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${user.parentProfileId}, 1))`;
+    await tx.$queryRaw`
+  SELECT pg_advisory_xact_lock(
+    hashtextextended(${user.parentProfileId}, 1)
+  )::text AS lock_acquired
+`;
     const setting = await tx.parentSecuritySetting.findUnique({
       where: { parentProfileId: user.parentProfileId! }
     });

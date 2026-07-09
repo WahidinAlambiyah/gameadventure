@@ -1,4 +1,6 @@
 import "server-only";
+
+import { hashSecret, verifySecret } from "@/server/security/password";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { betterAuth } from "better-auth";
 import { env } from "@/config/env";
@@ -14,7 +16,11 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false,
     minPasswordLength: 12,
-    maxPasswordLength: 128
+    maxPasswordLength: 128,
+    password: {
+      hash: hashSecret,
+      verify: ({ hash, password }) => verifySecret(hash, password)
+    }
   },
   socialProviders:
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
