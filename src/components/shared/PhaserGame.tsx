@@ -2,7 +2,29 @@
 
 import { useEffect, useRef } from "react";
 
-export function PhaserGame() {
+export type PhaserQuestion = {
+  id: string;
+  prompt: string;
+  options: { id: string; label: string }[];
+};
+
+export type PhaserAnswerPayload = {
+  questionId: string;
+  selectedOptionId: string;
+};
+
+export type PhaserAttemptConfig = {
+  questions: PhaserQuestion[];
+  onAnswer: (payload: PhaserAnswerPayload) => void;
+};
+
+export function PhaserGame({
+  questions,
+  onAnswer
+}: {
+  questions: PhaserQuestion[];
+  onAnswer: (payload: PhaserAnswerPayload) => void;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +68,7 @@ export function PhaserGame() {
           BalloonShooterScene
         ]
       });
+      game.registry.set("attemptConfig", { questions, onAnswer } satisfies PhaserAttemptConfig);
     }
 
     boot().catch(() => undefined);
@@ -54,7 +77,7 @@ export function PhaserGame() {
       cancelled = true;
       game?.destroy(true);
     };
-  }, []);
+  }, [onAnswer, questions]);
 
   return (
     <div

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PhaserGame } from "@/components/shared/PhaserGame";
 
 type PlaySessionClientProps = {
@@ -10,18 +10,35 @@ type PlaySessionClientProps = {
 
 type SessionState =
   | { status: "loading"; message: string }
-  | { status: "playing"; sessionId: string; remainingSeconds: number | null }
+  | {
+      status: "playing";
+      sessionId: string;
+      remainingSeconds: number | null;
+      questions: SessionQuestion[];
+      attemptMessage: string | null;
+    }
+  | { status: "completed"; message: string }
   | { status: "rest"; message: string; remainingSeconds: number }
   | { status: "error"; message: string };
+
+type SessionQuestion = {
+  id: string;
+  prompt: string;
+  options: { id: string; label: string }[];
+};
 
 async function parseJson(response: Response) {
   return response.json().catch(() => null) as Promise<{
     success?: boolean;
     data?: {
-      session?: { id: string };
+      session?: { id: string; questions?: SessionQuestion[] };
       heartbeat?: {
         allowed: boolean;
         remainingSeconds: number;
+      };
+      attempt?: {
+        isCorrect: boolean;
+        levelCompleted: boolean;
       };
     };
     error?: { message?: string };
@@ -34,16 +51,69 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
     message: "Menyiapkan petualangan..."
   });
   const sessionIdRef = useRef<string | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const nextClientSequenceRef = useRef(1);
+  const questionsRef = useRef<SessionQuestion[]>([]);
+
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+    heartbeatTimerRef.current = undefined;
+    sessionIdRef.current = null;
+    questionsRef.current = [];
+  }, []);
+
+  const submitAnswer = useCallback(
+    async (payload: { questionId: string; selectedOptionId: string }) => {
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) return;
+
+      const response = await fetch(
+        `/api/v1/children/${encodeURIComponent(childId)}/game-sessions/${encodeURIComponent(
+          sessionId
+        )}/attempts`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...payload,
+            clientSequence: nextClientSequenceRef.current++
+          })
+        }
+      );
+      const body = await parseJson(response);
+      const attempt = body?.data?.attempt;
+
+      if (!response.ok || !attempt) {
+        setState({
+          status: "error",
+          message: body?.error?.message ?? "Jawaban tidak dapat dikirim."
+        });
+        return;
+      }
+
+      if (attempt.levelCompleted) {
+        stopHeartbeat();
+        setState({
+          status: "completed",
+          message: "Level selesai. Level berikutnya sudah terbuka."
+        });
+        return;
+      }
+
+      setState((current) =>
+        current.status === "playing"
+          ? {
+              ...current,
+              attemptMessage: attempt.isCorrect ? "Benar." : "Coba lagi."
+            }
+          : current
+      );
+    },
+    [childId, stopHeartbeat]
+  );
 
   useEffect(() => {
     let cancelled = false;
-    let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
-
-    function stopHeartbeat() {
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      heartbeatTimer = undefined;
-      sessionIdRef.current = null;
-    }
 
     async function heartbeat(sessionId: string) {
       const response = await fetch(
@@ -80,11 +150,20 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
         return;
       }
 
-      setState({
-        status: "playing",
-        sessionId,
-        remainingSeconds: heartbeatData.remainingSeconds
-      });
+      setState((current) =>
+        current.status === "playing" && current.sessionId === sessionId
+          ? {
+              ...current,
+              remainingSeconds: heartbeatData.remainingSeconds
+            }
+          : {
+              status: "playing",
+              sessionId,
+              remainingSeconds: heartbeatData.remainingSeconds,
+              questions: questionsRef.current,
+              attemptMessage: null
+            }
+      );
     }
 
     async function startSession() {
@@ -110,9 +189,17 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
       }
 
       sessionIdRef.current = sessionId;
-      setState({ status: "playing", sessionId, remainingSeconds: null });
+      nextClientSequenceRef.current = 1;
+      questionsRef.current = body.data?.session?.questions ?? [];
+      setState({
+        status: "playing",
+        sessionId,
+        remainingSeconds: null,
+        questions: questionsRef.current,
+        attemptMessage: null
+      });
       void heartbeat(sessionId);
-      heartbeatTimer = setInterval(() => {
+      heartbeatTimerRef.current = setInterval(() => {
         if (sessionIdRef.current) void heartbeat(sessionIdRef.current);
       }, 30_000);
     }
@@ -123,7 +210,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
       cancelled = true;
       stopHeartbeat();
     };
-  }, [childId, levelId]);
+  }, [childId, levelId, stopHeartbeat]);
 
   if (state.status === "rest") {
     return (
@@ -142,6 +229,14 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
     );
   }
 
+  if (state.status === "completed") {
+    return (
+      <section className="surface p-6 text-center">
+        <h2 className="text-3xl font-black">{state.message}</h2>
+      </section>
+    );
+  }
+
   return (
     <div className="grid gap-4">
       <div className="surface flex flex-wrap items-center justify-between gap-3 p-4">
@@ -154,7 +249,14 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
           </p>
         ) : null}
       </div>
-      <PhaserGame />
+      {state.status === "playing" ? (
+        <>
+          {state.attemptMessage ? (
+            <p className="text-sm font-bold text-[var(--brand-strong)]">{state.attemptMessage}</p>
+          ) : null}
+          <PhaserGame questions={state.questions} onAnswer={submitAnswer} />
+        </>
+      ) : null}
     </div>
   );
 }

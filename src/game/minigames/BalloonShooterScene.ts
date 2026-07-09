@@ -1,40 +1,67 @@
 import Phaser from "phaser";
 
-export class BalloonShooterScene extends Phaser.Scene {
-  private score = 0;
+type AttemptConfig = {
+  questions?: {
+    id: string;
+    prompt: string;
+    options: { id: string; label: string }[];
+  }[];
+  onAnswer?: (payload: { questionId: string; selectedOptionId: string }) => void;
+};
 
+export class BalloonShooterScene extends Phaser.Scene {
   constructor() {
     super("BalloonShooterScene");
   }
 
   create() {
     const { width, height } = this.scale;
-    const scoreText = this.add.text(24, 24, "Score 0", {
+    const config = this.registry.get("attemptConfig") as AttemptConfig | undefined;
+    const question = config?.questions?.[0];
+
+    this.add.text(24, 24, question?.prompt ?? "Tap the bright balloon", {
       fontFamily: "Arial",
       fontSize: "24px",
       color: "#21313c"
     });
 
-    const balloon = this.add.circle(width / 2, height / 2, 58, 0xf2c14e).setInteractive({
-      useHandCursor: true
-    });
+    if (!question || question.options.length === 0) {
+      this.add
+        .text(width / 2, height / 2, "No question available", {
+          fontFamily: "Arial",
+          fontSize: "28px",
+          color: "#5b6872"
+        })
+        .setOrigin(0.5);
+      return;
+    }
 
-    this.add
-      .text(width / 2, height / 2, "ba", {
-        fontFamily: "Arial",
-        fontSize: "38px",
-        color: "#21313c"
-      })
-      .setOrigin(0.5);
+    const startX = width / 2 - ((question.options.length - 1) * 150) / 2;
+    question.options.forEach((option, index) => {
+      const x = startX + index * 150;
+      const balloon = this.add.circle(x, height / 2, 58, 0xf2c14e).setInteractive({
+        useHandCursor: true
+      });
 
-    balloon.on("pointerdown", () => {
-      this.score += 1;
-      scoreText.setText(`Score ${this.score}`);
-      this.tweens.add({
-        targets: balloon,
-        scale: 1.18,
-        yoyo: true,
-        duration: 120
+      this.add
+        .text(x, height / 2, option.label, {
+          fontFamily: "Arial",
+          fontSize: "38px",
+          color: "#21313c"
+        })
+        .setOrigin(0.5);
+
+      balloon.on("pointerdown", () => {
+        config?.onAnswer?.({
+          questionId: question.id,
+          selectedOptionId: option.id
+        });
+        this.tweens.add({
+          targets: balloon,
+          scale: 1.18,
+          yoyo: true,
+          duration: 120
+        });
       });
     });
   }
