@@ -191,7 +191,7 @@ async function main() {
       }
     });
 
-    await prisma.learningLevel.upsert({
+    const starterLevel = await prisma.learningLevel.upsert({
       where: { trackId_slug: { trackId: createdTrack.id, slug: "starter-level" } },
       update: {
         status: "PUBLISHED" as ContentStatus
@@ -204,6 +204,95 @@ async function main() {
         status: "PUBLISHED" as ContentStatus
       }
     });
+
+    await prisma.learningLevel.upsert({
+      where: { trackId_slug: { trackId: createdTrack.id, slug: "next-level" } },
+      update: {
+        status: "PUBLISHED" as ContentStatus
+      },
+      create: {
+        trackId: createdTrack.id,
+        zoneId: zone.id,
+        slug: "next-level",
+        title: "Next Level",
+        sortOrder: 2,
+        status: "PUBLISHED" as ContentStatus
+      }
+    });
+
+    const lesson = await prisma.learningLesson.upsert({
+      where: { levelId_slug: { levelId: starterLevel.id, slug: "starter-lesson" } },
+      update: {},
+      create: {
+        levelId: starterLevel.id,
+        slug: "starter-lesson",
+        title: "Starter Lesson",
+        sortOrder: 1
+      }
+    });
+
+    const question = await prisma.learningQuestion.upsert({
+      where: {
+        id:
+          track.slug === "sastra-nusantara"
+            ? "00000000-0000-4000-8000-000000000201"
+            : "00000000-0000-4000-8000-000000000202"
+      },
+      update: {
+        lessonId: lesson.id,
+        prompt: "Which option says ba?",
+        answerRule: { type: "option_value", correctValue: "ba" },
+        sortOrder: 1
+      },
+      create: {
+        id:
+          track.slug === "sastra-nusantara"
+            ? "00000000-0000-4000-8000-000000000201"
+            : "00000000-0000-4000-8000-000000000202",
+        lessonId: lesson.id,
+        prompt: "Which option says ba?",
+        answerRule: { type: "option_value", correctValue: "ba" },
+        sortOrder: 1
+      }
+    });
+
+    for (const option of [
+      { label: "ba", value: "ba", sortOrder: 1 },
+      { label: "ma", value: "ma", sortOrder: 2 }
+    ]) {
+      await prisma.questionOption.upsert({
+        where: {
+          id:
+            `${track.slug}:${option.value}` === "sastra-nusantara:ba"
+              ? "00000000-0000-4000-8000-000000000301"
+              : `${track.slug}:${option.value}` === "sastra-nusantara:ma"
+                ? "00000000-0000-4000-8000-000000000302"
+                : `${track.slug}:${option.value}` === "hijaiyah-island:ba"
+                  ? "00000000-0000-4000-8000-000000000303"
+                  : "00000000-0000-4000-8000-000000000304"
+        },
+        update: {
+          questionId: question.id,
+          label: option.label,
+          value: option.value,
+          sortOrder: option.sortOrder
+        },
+        create: {
+          id:
+            `${track.slug}:${option.value}` === "sastra-nusantara:ba"
+              ? "00000000-0000-4000-8000-000000000301"
+              : `${track.slug}:${option.value}` === "sastra-nusantara:ma"
+                ? "00000000-0000-4000-8000-000000000302"
+                : `${track.slug}:${option.value}` === "hijaiyah-island:ba"
+                  ? "00000000-0000-4000-8000-000000000303"
+                  : "00000000-0000-4000-8000-000000000304",
+          questionId: question.id,
+          label: option.label,
+          value: option.value,
+          sortOrder: option.sortOrder
+        }
+      });
+    }
   }
 }
 
