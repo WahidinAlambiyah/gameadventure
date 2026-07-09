@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhaserGame } from "@/components/shared/PhaserGame";
 
@@ -15,7 +16,7 @@ type SessionState =
       sessionId: string;
       remainingSeconds: number | null;
       questions: SessionQuestion[];
-      attemptMessage: string | null;
+      attemptFeedback: AttemptFeedback | null;
     }
   | { status: "completed"; message: string }
   | { status: "rest"; message: string; remainingSeconds: number }
@@ -25,6 +26,12 @@ type SessionQuestion = {
   id: string;
   prompt: string;
   options: { id: string; label: string }[];
+};
+
+type AttemptFeedback = {
+  kind: "correct" | "incorrect";
+  title: string;
+  message: string;
 };
 
 async function parseJson(response: Response) {
@@ -104,7 +111,17 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
         current.status === "playing"
           ? {
               ...current,
-              attemptMessage: attempt.isCorrect ? "Benar." : "Coba lagi."
+              attemptFeedback: attempt.isCorrect
+                ? {
+                    kind: "correct",
+                    title: "Benar!",
+                    message: "Jawabanmu tepat. Teruskan petualangan."
+                  }
+                : {
+                    kind: "incorrect",
+                    title: "Belum tepat.",
+                    message: "Coba pilih balon lain."
+                  }
             }
           : current
       );
@@ -161,7 +178,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
               sessionId,
               remainingSeconds: heartbeatData.remainingSeconds,
               questions: questionsRef.current,
-              attemptMessage: null
+              attemptFeedback: null
             }
       );
     }
@@ -196,7 +213,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
         sessionId,
         remainingSeconds: null,
         questions: questionsRef.current,
-        attemptMessage: null
+        attemptFeedback: null
       });
       void heartbeat(sessionId);
       heartbeatTimerRef.current = setInterval(() => {
@@ -217,6 +234,9 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
       <section className="surface p-6 text-center">
         <h2 className="text-3xl font-black">{state.message}</h2>
         <p className="mt-3 text-[var(--muted)]">Lanjutkan lagi setelah waktu bermain direset.</p>
+        <Link className="app-button mx-auto mt-5 w-full sm:w-auto" href={`/child/${childId}/map`}>
+          Kembali ke Adventure Map
+        </Link>
       </section>
     );
   }
@@ -225,6 +245,9 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
     return (
       <section className="surface p-6">
         <p className="form-error">{state.message}</p>
+        <Link className="app-button mt-5 w-full sm:w-auto" href={`/child/${childId}/map`}>
+          Kembali ke Adventure Map
+        </Link>
       </section>
     );
   }
@@ -232,27 +255,71 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
   if (state.status === "completed") {
     return (
       <section className="surface p-6 text-center">
-        <h2 className="text-3xl font-black">{state.message}</h2>
+        <p className="text-sm font-black uppercase text-[var(--brand)]">Level selesai</p>
+        <h2 className="mt-2 text-3xl font-black">{state.message}</h2>
+        <p className="mx-auto mt-3 max-w-xl text-[var(--muted)]">
+          Kembali ke peta untuk melihat level yang sudah selesai dan petualangan berikutnya.
+        </p>
+        <Link className="app-button mx-auto mt-5 w-full sm:w-auto" href={`/child/${childId}/map`}>
+          Kembali ke Adventure Map
+        </Link>
+      </section>
+    );
+  }
+
+  if (state.status === "playing" && state.questions.length === 0) {
+    return (
+      <section className="surface p-6 text-center">
+        <p className="text-sm font-black uppercase text-[var(--brand)]">Belum siap dimainkan</p>
+        <h2 className="mt-2 text-3xl font-black">Level ini belum punya pertanyaan.</h2>
+        <p className="mx-auto mt-3 max-w-xl text-[var(--muted)]">
+          Pilih level lain di peta sambil menunggu konten level ini disiapkan.
+        </p>
+        <Link className="app-button mx-auto mt-5 w-full sm:w-auto" href={`/child/${childId}/map`}>
+          Kembali ke Adventure Map
+        </Link>
       </section>
     );
   }
 
   return (
     <div className="grid gap-4">
-      <div className="surface flex flex-wrap items-center justify-between gap-3 p-4">
-        <p className="font-bold">
-          {state.status === "loading" ? state.message : "Sesi petualangan aktif"}
-        </p>
-        {state.status === "playing" && state.remainingSeconds !== null ? (
-          <p className="text-sm font-bold text-[var(--brand-strong)]">
-            Sisa {Math.ceil(state.remainingSeconds / 60)} menit
-          </p>
-        ) : null}
+      <div className="surface grid gap-3 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div>
+          <p className="text-sm font-black uppercase text-[var(--brand)]">Sesi petualangan</p>
+          <h2 className="mt-1 text-2xl font-black">
+            {state.status === "loading" ? state.message : "Pilih balon jawaban"}
+          </h2>
+          {state.status === "playing" ? (
+            <p className="mt-1 text-[var(--muted)]">
+              Dengarkan pertanyaan, pilih jawaban, lalu lihat hasilnya.
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {state.status === "playing" && state.remainingSeconds !== null ? (
+            <p className="rounded-[8px] bg-[#eaf8fb] px-3 py-2 text-sm font-black text-[#18383f]">
+              Sisa {Math.ceil(state.remainingSeconds / 60)} menit
+            </p>
+          ) : null}
+          <Link className="app-button secondary w-full sm:w-auto" href={`/child/${childId}/map`}>
+            Kembali ke Adventure Map
+          </Link>
+        </div>
       </div>
       {state.status === "playing" ? (
         <>
-          {state.attemptMessage ? (
-            <p className="text-sm font-bold text-[var(--brand-strong)]">{state.attemptMessage}</p>
+          {state.attemptFeedback ? (
+            <section
+              className={`rounded-[8px] border p-4 ${
+                state.attemptFeedback.kind === "correct"
+                  ? "border-[#91d7a8] bg-[#effbf2] text-[#1f5d32]"
+                  : "border-[#f0c36a] bg-[#fff7e6] text-[#76510f]"
+              }`}
+            >
+              <h3 className="text-lg font-black">{state.attemptFeedback.title}</h3>
+              <p className="mt-1 text-sm font-bold">{state.attemptFeedback.message}</p>
+            </section>
           ) : null}
           <PhaserGame questions={state.questions} onAnswer={submitAnswer} />
         </>
