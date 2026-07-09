@@ -19,7 +19,7 @@ export class BalloonShooterScene extends Phaser.Scene {
     const config = this.registry.get("attemptConfig") as AttemptConfig | undefined;
     const question = config?.questions?.[0];
 
-    this.add.text(24, 24, question?.prompt ?? "Tap the bright balloon", {
+    this.add.text(24, 24, question?.prompt ?? "Pilih balon jawaban", {
       fontFamily: "Arial",
       fontSize: "24px",
       color: "#21313c"
@@ -27,7 +27,7 @@ export class BalloonShooterScene extends Phaser.Scene {
 
     if (!question || question.options.length === 0) {
       this.add
-        .text(width / 2, height / 2, "No question available", {
+        .text(width / 2, height / 2, "Level ini belum punya pertanyaan.", {
           fontFamily: "Arial",
           fontSize: "28px",
           color: "#5b6872"

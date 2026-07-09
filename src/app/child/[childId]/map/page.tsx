@@ -2,6 +2,33 @@ import Link from "next/link";
 import { requireParentPermission } from "@/server/auth/session";
 import { getAdventureMapForChild } from "@/server/services/adventurePlay";
 
+function levelPresentation(state: "AVAILABLE" | "LOCKED" | "COMPLETED") {
+  if (state === "COMPLETED") {
+    return {
+      label: "Selesai",
+      cardClass: "border-[#91d7a8] bg-[#effbf2]",
+      badgeClass: "bg-[#d9f4df] text-[#1f5d32]",
+      helper: "Level sudah selesai. Bisa dimainkan lagi."
+    };
+  }
+
+  if (state === "AVAILABLE") {
+    return {
+      label: "Main",
+      cardClass: "border-[#78c6d0] bg-[#f1fbfd]",
+      badgeClass: "bg-[#dff5f8] text-[#18383f]",
+      helper: "Level siap dimainkan."
+    };
+  }
+
+  return {
+    label: "Terkunci",
+    cardClass: "border-[#d5d9dd] bg-[#f5f7f8]",
+    badgeClass: "bg-[#e7eaed] text-[#5b6872]",
+    helper: "Selesaikan level sebelumnya dulu."
+  };
+}
+
 export default async function ChildMapPage({ params }: { params: Promise<{ childId: string }> }) {
   const user = await requireParentPermission("child:read-own");
   const { childId } = await params;
@@ -31,20 +58,23 @@ export default async function ChildMapPage({ params }: { params: Promise<{ child
                   <h3 className="font-black">{zone.title}</h3>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {zone.levels.map((level) => {
-                      const label =
-                        level.state === "COMPLETED"
-                          ? "Selesai"
-                          : level.state === "AVAILABLE"
-                            ? "Main"
-                            : "Terkunci";
+                      const presentation = levelPresentation(level.state);
                       return (
-                        <div className="surface p-4" key={level.id}>
+                        <div
+                          className={`rounded-[8px] border-2 p-4 ${presentation.cardClass}`}
+                          key={level.id}
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <h4 className="font-black">{level.title}</h4>
-                            <span className="rounded-[8px] bg-[#eaf8fb] px-2 py-1 text-xs font-black text-[#18383f]">
-                              {level.state}
+                            <span
+                              className={`rounded-[8px] px-2 py-1 text-xs font-black ${presentation.badgeClass}`}
+                            >
+                              {presentation.label}
                             </span>
                           </div>
+                          <p className="mt-2 text-sm font-bold text-[var(--muted)]">
+                            {presentation.helper}
+                          </p>
                           <div className="mt-4">
                             {level.state === "LOCKED" ? (
                               <button
@@ -52,14 +82,14 @@ export default async function ChildMapPage({ params }: { params: Promise<{ child
                                 disabled
                                 type="button"
                               >
-                                {label}
+                                {presentation.label}
                               </button>
                             ) : (
                               <Link
                                 className="app-button w-full"
                                 href={`/child/${childId}/play/${level.id}`}
                               >
-                                {label}
+                                {presentation.label}
                               </Link>
                             )}
                           </div>

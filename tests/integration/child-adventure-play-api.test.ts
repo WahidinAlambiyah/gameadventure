@@ -307,6 +307,20 @@ describe("child adventure map and play session API", () => {
     ]);
   });
 
+  it("starts an unlocked no-question level without auto-completing progress", async () => {
+    adventurePlayTest.completeLevel(childId, firstLevelId);
+
+    const { response, body } = await start(secondLevelId);
+    const session = adventurePlayTest.sessions().find((item) => item.id === body.data.session.id);
+    const progress = adventurePlayTest.progress();
+
+    expect(response.status).toBe(201);
+    expect(body.data.session.questions).toEqual([]);
+    expect(session?.completedAt).toBeNull();
+    expect(progress).toHaveLength(1);
+    expect(progress.some((item) => item.levelId === secondLevelId)).toBe(false);
+  });
+
   it("records an incorrect attempt without completing the level", async () => {
     const started = await start();
     const sessionId = started.body.data.session.id;
