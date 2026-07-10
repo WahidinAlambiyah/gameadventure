@@ -34,6 +34,9 @@ export default async function ParentDashboardPage() {
               <Link className="app-button secondary" href="/parent/children">
                 View details
               </Link>
+              <Link className="app-button secondary" href="/parent/progress">
+                View progress
+              </Link>
             </div>
           </article>
         ) : (
