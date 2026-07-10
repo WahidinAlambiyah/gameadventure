@@ -14,15 +14,15 @@ export type PhaserAnswerPayload = {
 };
 
 export type PhaserAttemptConfig = {
-  questions: PhaserQuestion[];
+  question: PhaserQuestion;
   onAnswer: (payload: PhaserAnswerPayload) => void;
 };
 
 export function PhaserGame({
-  questions,
+  question,
   onAnswer
 }: {
-  questions: PhaserQuestion[];
+  question: PhaserQuestion;
   onAnswer: (payload: PhaserAnswerPayload) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -68,7 +68,7 @@ export function PhaserGame({
           BalloonShooterScene
         ]
       });
-      game.registry.set("attemptConfig", { questions, onAnswer } satisfies PhaserAttemptConfig);
+      game.registry.set("attemptConfig", { question, onAnswer } satisfies PhaserAttemptConfig);
     }
 
     boot().catch(() => undefined);
@@ -77,7 +77,7 @@ export function PhaserGame({
       cancelled = true;
       game?.destroy(true);
     };
-  }, [onAnswer, questions]);
+  }, [onAnswer, question]);
 
   return (
     <div

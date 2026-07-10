@@ -16,6 +16,7 @@ type SessionState =
       sessionId: string;
       remainingSeconds: number | null;
       questions: SessionQuestion[];
+      currentQuestionIndex: number;
       attemptFeedback: AttemptFeedback | null;
     }
   | { status: "completed"; message: string }
@@ -61,70 +62,108 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const nextClientSequenceRef = useRef(1);
   const questionsRef = useRef<SessionQuestion[]>([]);
+  const submissionInFlightRef = useRef(false);
 
   const stopHeartbeat = useCallback(() => {
     if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
     heartbeatTimerRef.current = undefined;
     sessionIdRef.current = null;
     questionsRef.current = [];
+    submissionInFlightRef.current = false;
   }, []);
 
   const submitAnswer = useCallback(
     async (payload: { questionId: string; selectedOptionId: string }) => {
       const sessionId = sessionIdRef.current;
-      if (!sessionId) return;
+      if (!sessionId || submissionInFlightRef.current) return;
 
-      const response = await fetch(
-        `/api/v1/children/${encodeURIComponent(childId)}/game-sessions/${encodeURIComponent(
-          sessionId
-        )}/attempts`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            ...payload,
-            clientSequence: nextClientSequenceRef.current++
-          })
+      submissionInFlightRef.current = true;
+      const clientSequence = nextClientSequenceRef.current;
+      nextClientSequenceRef.current += 1;
+
+      try {
+        const response = await fetch(
+          `/api/v1/children/${encodeURIComponent(childId)}/game-sessions/${encodeURIComponent(
+            sessionId
+          )}/attempts`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              ...payload,
+              clientSequence
+            })
+          }
+        );
+        const body = await parseJson(response);
+        const attempt = body?.data?.attempt;
+
+        if (!response.ok || !attempt) {
+          setState({
+            status: "error",
+            message: body?.error?.message ?? "Jawaban tidak dapat dikirim."
+          });
+          return;
         }
-      );
-      const body = await parseJson(response);
-      const attempt = body?.data?.attempt;
 
-      if (!response.ok || !attempt) {
-        setState({
-          status: "error",
-          message: body?.error?.message ?? "Jawaban tidak dapat dikirim."
+        if (attempt.levelCompleted) {
+          stopHeartbeat();
+          setState({
+            status: "completed",
+            message: "Level selesai. Level berikutnya sudah terbuka."
+          });
+          return;
+        }
+
+        const answeredQuestionIndex = questionsRef.current.findIndex(
+          (question) => question.id === payload.questionId
+        );
+        const nextQuestionIndex = answeredQuestionIndex + 1;
+        if (
+          attempt.isCorrect &&
+          (answeredQuestionIndex < 0 || nextQuestionIndex >= questionsRef.current.length)
+        ) {
+          stopHeartbeat();
+          setState({
+            status: "error",
+            message: "Pertanyaan berikutnya tidak tersedia. Kembali ke peta lalu coba lagi."
+          });
+          return;
+        }
+
+        setState((current) => {
+          if (current.status !== "playing") return current;
+
+          if (!attempt.isCorrect) {
+            return {
+              ...current,
+              attemptFeedback: {
+                kind: "incorrect",
+                title: "Belum tepat.",
+                message: "Coba pilih balon lain."
+              }
+            };
+          }
+
+          return {
+            ...current,
+            currentQuestionIndex: nextQuestionIndex,
+            attemptFeedback: {
+              kind: "correct",
+              title: "Benar!",
+              message: "Jawabanmu tepat. Teruskan petualangan."
+            }
+          };
         });
-        return;
-      }
-
-      if (attempt.levelCompleted) {
+      } catch {
         stopHeartbeat();
         setState({
-          status: "completed",
-          message: "Level selesai. Level berikutnya sudah terbuka."
+          status: "error",
+          message: "Jawaban tidak dapat dikirim."
         });
-        return;
+      } finally {
+        submissionInFlightRef.current = false;
       }
-
-      setState((current) =>
-        current.status === "playing"
-          ? {
-              ...current,
-              attemptFeedback: attempt.isCorrect
-                ? {
-                    kind: "correct",
-                    title: "Benar!",
-                    message: "Jawabanmu tepat. Teruskan petualangan."
-                  }
-                : {
-                    kind: "incorrect",
-                    title: "Belum tepat.",
-                    message: "Coba pilih balon lain."
-                  }
-            }
-          : current
-      );
     },
     [childId, stopHeartbeat]
   );
@@ -173,13 +212,7 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
               ...current,
               remainingSeconds: heartbeatData.remainingSeconds
             }
-          : {
-              status: "playing",
-              sessionId,
-              remainingSeconds: heartbeatData.remainingSeconds,
-              questions: questionsRef.current,
-              attemptFeedback: null
-            }
+          : current
       );
     }
 
@@ -207,12 +240,14 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
 
       sessionIdRef.current = sessionId;
       nextClientSequenceRef.current = 1;
+      submissionInFlightRef.current = false;
       questionsRef.current = body.data?.session?.questions ?? [];
       setState({
         status: "playing",
         sessionId,
         remainingSeconds: null,
         questions: questionsRef.current,
+        currentQuestionIndex: 0,
         attemptFeedback: null
       });
       void heartbeat(sessionId);
@@ -291,9 +326,14 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
             {state.status === "loading" ? state.message : "Pilih balon jawaban"}
           </h2>
           {state.status === "playing" ? (
-            <p className="mt-1 text-[var(--muted)]">
-              Dengarkan pertanyaan, pilih jawaban, lalu lihat hasilnya.
-            </p>
+            <div className="mt-1 grid gap-1">
+              <p className="font-black text-[var(--brand)]">
+                Pertanyaan {state.currentQuestionIndex + 1} dari {state.questions.length}
+              </p>
+              <p className="text-[var(--muted)]">
+                Dengarkan pertanyaan, pilih jawaban, lalu lihat hasilnya.
+              </p>
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -321,7 +361,10 @@ export function PlaySessionClient({ childId, levelId }: PlaySessionClientProps) 
               <p className="mt-1 text-sm font-bold">{state.attemptFeedback.message}</p>
             </section>
           ) : null}
-          <PhaserGame questions={state.questions} onAnswer={submitAnswer} />
+          <PhaserGame
+            question={state.questions[state.currentQuestionIndex]!}
+            onAnswer={submitAnswer}
+          />
         </>
       ) : null}
     </div>

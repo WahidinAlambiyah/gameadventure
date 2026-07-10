@@ -1,11 +1,11 @@
 import Phaser from "phaser";
 
 type AttemptConfig = {
-  questions?: {
+  question?: {
     id: string;
     prompt: string;
     options: { id: string; label: string }[];
-  }[];
+  };
   onAnswer?: (payload: { questionId: string; selectedOptionId: string }) => void;
 };
 
@@ -17,7 +17,7 @@ export class BalloonShooterScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
     const config = this.registry.get("attemptConfig") as AttemptConfig | undefined;
-    const question = config?.questions?.[0];
+    const question = config?.question;
 
     this.add.text(24, 24, question?.prompt ?? "Pilih balon jawaban", {
       fontFamily: "Arial",
