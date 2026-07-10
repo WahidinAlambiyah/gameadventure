@@ -321,7 +321,7 @@ describe("child adventure map and play session API", () => {
     expect(progress.some((item) => item.levelId === secondLevelId)).toBe(false);
   });
 
-  it("records an incorrect attempt without completing the level", async () => {
+  it("keeps the level active after an incorrect attempt and accepts a later correct answer", async () => {
     const started = await start();
     const sessionId = started.body.data.session.id;
 
@@ -336,6 +336,16 @@ describe("child adventure map and play session API", () => {
     expect(result.body.data.attempt.levelCompleted).toBe(false);
     expect(session?.completedAt).toBeNull();
     expect(adventurePlayTest.progress()).toHaveLength(0);
+
+    const corrected = await attempt(sessionId, {
+      selectedOptionId: correctOptionId,
+      clientSequence: 2
+    });
+
+    expect(corrected.response.status).toBe(200);
+    expect(corrected.body.data.attempt.isCorrect).toBe(true);
+    expect(corrected.body.data.attempt.levelCompleted).toBe(true);
+    expect(adventurePlayTest.progress()).toHaveLength(1);
   });
 
   it("rejects a question that does not belong to the session level", async () => {

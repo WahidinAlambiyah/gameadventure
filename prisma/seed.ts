@@ -293,6 +293,63 @@ async function main() {
         }
       });
     }
+
+    const secondQuestion = await prisma.learningQuestion.upsert({
+      where: {
+        id:
+          track.slug === "sastra-nusantara"
+            ? "00000000-0000-4000-8000-000000000211"
+            : "00000000-0000-4000-8000-000000000212"
+      },
+      update: {
+        lessonId: lesson.id,
+        prompt: "Which option says sa?",
+        answerRule: { type: "option_value", correctValue: "sa" },
+        sortOrder: 2
+      },
+      create: {
+        id:
+          track.slug === "sastra-nusantara"
+            ? "00000000-0000-4000-8000-000000000211"
+            : "00000000-0000-4000-8000-000000000212",
+        lessonId: lesson.id,
+        prompt: "Which option says sa?",
+        answerRule: { type: "option_value", correctValue: "sa" },
+        sortOrder: 2
+      }
+    });
+
+    for (const option of [
+      { label: "sa", value: "sa", sortOrder: 1 },
+      { label: "na", value: "na", sortOrder: 2 }
+    ]) {
+      const optionKey = `${track.slug}:${option.value}`;
+      const optionId =
+        optionKey === "sastra-nusantara:sa"
+          ? "00000000-0000-4000-8000-000000000311"
+          : optionKey === "sastra-nusantara:na"
+            ? "00000000-0000-4000-8000-000000000312"
+            : optionKey === "hijaiyah-island:sa"
+              ? "00000000-0000-4000-8000-000000000313"
+              : "00000000-0000-4000-8000-000000000314";
+
+      await prisma.questionOption.upsert({
+        where: { id: optionId },
+        update: {
+          questionId: secondQuestion.id,
+          label: option.label,
+          value: option.value,
+          sortOrder: option.sortOrder
+        },
+        create: {
+          id: optionId,
+          questionId: secondQuestion.id,
+          label: option.label,
+          value: option.value,
+          sortOrder: option.sortOrder
+        }
+      });
+    }
   }
 }
 
