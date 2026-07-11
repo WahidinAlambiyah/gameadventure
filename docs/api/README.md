@@ -1,65 +1,48 @@
-# API Foundation
+# API BacaNgaji Adventure
 
-All product API routes live under `/api/v1`.
+Product APIs menggunakan prefix `/api/v1`. Better Auth memakai `/api/auth/*`; health endpoints berada di root `/api`.
 
-Response envelope:
+Success envelope berbentuk `{ "success": true, "data": {}, "meta": {} }`. Error envelope berbentuk `{ "success": false, "error": { "code": "...", "message": "..." } }`. Validation error menggunakan HTTP `422` dan `VALIDATION_ERROR`.
 
-```json
-{ "success": true, "data": {}, "meta": {} }
-```
+Keterangan: **Auth** berarti authenticated session. **Gate** berarti parent-gate cookie valid. Ownership selalu diverifikasi server-side.
 
-Error envelope:
+| Method    | Path                                                           | Authentication/permission           | Gate  | Ownership                             | Status      | Tujuan response                                   |
+| --------- | -------------------------------------------------------------- | ----------------------------------- | ----- | ------------------------------------- | ----------- | ------------------------------------------------- |
+| GET, POST | `/api/auth/*`                                                  | Better Auth lifecycle               | Tidak | Tidak                                 | Implemented | Auth handler Better Auth                          |
+| GET       | `/api/health`                                                  | Public                              | Tidak | Tidak                                 | Implemented | Process health dan timestamp                      |
+| GET       | `/api/ready`                                                   | Public                              | Tidak | Tidak                                 | Implemented | Database readiness                                |
+| GET       | `/api/v1/me`                                                   | Auth                                | Tidak | Parent scope bila tersedia            | Implemented | User, roles, permissions, onboarding, child count |
+| POST      | `/api/v1/auth/bootstrap-parent`                                | Auth; privileged users ditolak      | Tidak | User sendiri                          | Implemented | Membuat/menemukan parent profile dan role         |
+| DELETE    | `/api/v1/auth/parent-gate`                                     | Parent                              | Tidak | Parent sendiri                        | Implemented | Menghapus gate cookie                             |
+| POST      | `/api/v1/auth/parent-gate/verify`                              | Parent                              | Tidak | Optional `childId` harus milik parent | Implemented | Verifikasi PIN dan set gate cookie                |
+| GET       | `/api/v1/children`                                             | `child:read-own`                    | Tidak | Parent profile                        | Implemented | Daftar child profiles                             |
+| POST      | `/api/v1/children`                                             | `child:create`                      | Tidak | Parent id dari session                | Implemented | Membuat child profile                             |
+| GET       | `/api/v1/children/:childId`                                    | `child:read-own`                    | Tidak | Child-parent query                    | Implemented | Detail child profile                              |
+| PATCH     | `/api/v1/children/:childId`                                    | Belum diterapkan                    | Tidak | Intended own child                    | Placeholder | Intended child update                             |
+| DELETE    | `/api/v1/children/:childId`                                    | Belum diterapkan                    | Tidak | Intended own child                    | Placeholder | Intended soft-delete                              |
+| GET       | `/api/v1/children/:childId/play-status`                        | Parent                              | Tidak | Child-parent query                    | Implemented | Daily usage/play availability                     |
+| GET       | `/api/v1/children/:childId/adventure-map`                      | `child:read-own`                    | Tidak | Service scopes parent dan child       | Implemented | Tracks, levels, progress, unlock state            |
+| POST      | `/api/v1/children/:childId/game-sessions`                      | `child:read-own`                    | Tidak | Service scopes parent, child, level   | Implemented | Start session dan first question                  |
+| POST      | `/api/v1/children/:childId/game-sessions/:sessionId/heartbeat` | `child:read-own`                    | Tidak | Parent, child, session                | Implemented | Session heartbeat dan play policy                 |
+| POST      | `/api/v1/children/:childId/game-sessions/:sessionId/attempts`  | `child:read-own`                    | Tidak | Parent, child, session, question      | Implemented | Attempt result dan next session state             |
+| POST      | `/api/v1/children/:childId/game-sessions/:sessionId/end`       | `child:read-own`                    | Tidak | Parent, child, session                | Implemented | Idempotent session end state                      |
+| GET       | `/api/v1/children/:childId/progress`                           | `progress:read-own`                 | Ya    | Parent-child service scope            | Implemented | Parent-visible progress summary                   |
+| GET       | `/api/v1/parent/security`                                      | Parent                              | Tidak | Parent sendiri                        | Implemented | Sanitized PIN/gate status                         |
+| PUT       | `/api/v1/parent/security/pin`                                  | Parent                              | Tidak | Parent sendiri                        | Implemented | Set/change PIN dan rotate gate token              |
+| GET       | `/api/v1/parent/settings`                                      | `parent-setting:read-own`           | Ya    | Parent profile                        | Implemented | Settings dan usage summary                        |
+| PATCH     | `/api/v1/parent/settings`                                      | `parent-setting:update-own`         | Ya    | Parent profile                        | Implemented | Update limits, timezone, energy flag              |
+| GET       | `/api/v1/parent/dashboard`                                     | Belum diterapkan                    | Tidak | Intended parent scope                 | Placeholder | Intended dashboard summary                        |
+| GET       | `/api/v1/admin/roles`                                          | `role:read`                         | Tidak | Tidak                                 | Implemented | Daftar initial roles                              |
+| POST      | `/api/v1/admin/content`                                        | Permission belum ditegakkan handler | Tidak | Tidak                                 | Placeholder | Intended draft creation                           |
+| PATCH     | `/api/v1/admin/content/:contentId`                             | Permission belum ditegakkan handler | Tidak | Tidak                                 | Placeholder | Intended draft update                             |
+| POST      | `/api/v1/admin/content/:contentId/publish`                     | Permission belum ditegakkan handler | Tidak | Tidak                                 | Placeholder | Intended reviewed publish                         |
+| GET       | `/api/v1/content/tracks`                                       | Public shell                        | Tidak | Tidak                                 | Placeholder | Intended published tracks                         |
+| GET       | `/api/v1/content/levels/:levelId`                              | Public shell                        | Tidak | Tidak                                 | Placeholder | Intended level metadata                           |
+| POST      | `/api/v1/game-sessions`                                        | Belum diterapkan                    | Tidak | Intended ownership                    | Placeholder | Legacy generic session start                      |
+| GET       | `/api/v1/game-sessions/:sessionId`                             | Belum diterapkan                    | Tidak | Intended ownership                    | Placeholder | Legacy generic session status                     |
+| POST      | `/api/v1/game-sessions/:sessionId/attempts`                    | Belum diterapkan                    | Tidak | Intended ownership                    | Placeholder | Legacy generic attempt                            |
+| POST      | `/api/v1/game-sessions/:sessionId/complete`                    | Belum diterapkan                    | Tidak | Intended ownership                    | Placeholder | Legacy generic completion/reward                  |
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "FORBIDDEN",
-    "message": "You are not allowed to perform this action."
-  }
-}
-```
+Adventure APIs di bawah `/api/v1/children/:childId/game-sessions` adalah flow operational. Generic `/api/v1/game-sessions*` adalah placeholder dan tidak boleh digunakan sebagai kontrak aktif.
 
-Validation errors use HTTP `422` with code `VALIDATION_ERROR`.
-
-Implemented endpoints:
-
-- `GET /api/health`
-- `GET /api/ready`
-- `GET /api/v1/me`
-- `POST /api/v1/auth/bootstrap-parent`
-- `GET /api/v1/admin/roles`
-- `GET /api/v1/children`
-- `POST /api/v1/children`
-- `GET /api/v1/children/:childId`
-- `GET /api/v1/children/:childId/play-status`
-- `GET /api/v1/parent/security`
-- `PUT /api/v1/parent/security/pin`
-- `POST /api/v1/auth/parent-gate/verify`
-- `DELETE /api/v1/auth/parent-gate`
-- `GET /api/v1/parent/settings`
-- `PATCH /api/v1/parent/settings`
-
-Remaining endpoints are structured placeholders.
-
-`POST /api/v1/children` never accepts `parentProfileId` from the client. The parent scope is resolved from the authenticated server session.
-
-Child profile creation accepts:
-
-- `nickname`: trimmed, 2-30 characters.
-- exactly one of `birthYear` or `ageRange`.
-- `avatarKey`: allowlisted starter avatar.
-- `learningPreferences.focus`: one of `reading`, `hijaiyah`, or `both`.
-
-Parent security endpoints:
-
-- `PUT /api/v1/parent/security/pin` sets the initial PIN with `{ "pin": "1234", "confirmPin": "1234" }`.
-- `PUT /api/v1/parent/security/pin` changes an existing PIN with `{ "currentPin": "1234", "pin": "5678", "confirmPin": "5678" }`.
-- `POST /api/v1/auth/parent-gate/verify` verifies a PIN and returns a sanitized local `returnTo`.
-- `GET /api/v1/parent/security` returns safe status fields only.
-- PIN plaintext and PIN hashes are never returned.
-
-Parent settings endpoints require a valid parent-gate cookie:
-
-- `GET /api/v1/parent/settings`
-- `PATCH /api/v1/parent/settings` with `dailyLimitMinutes`, `timezone`, and `energyEnabled`.
+Request detail yang authoritative tetap berada pada Zod schema dan route handler masing-masing; dokumentasi ini tidak menggantikannya.
