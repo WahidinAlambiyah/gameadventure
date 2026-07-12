@@ -6,6 +6,7 @@
 - Strict TypeScript serta Zod untuk environment dan request validation.
 - Database-driven RBAC dengan server-side permission guards.
 - Parent ownership checks untuk child, gameplay, dan progress resources.
+- Update dan soft-delete child memerlukan permission khusus, parent gate valid, active ownership, serta response not-found generik untuk missing/foreign/deleted ID.
 - Anak adalah `ChildProfile`, bukan auth user.
 - Parent PIN dihash dengan Argon2id; PIN plaintext/hash tidak dikembalikan ke client.
 - Parent-gate cookie `httpOnly`, `sameSite=strict`, ditandatangani HMAC, terikat user/parent/PIN fingerprint, dan berumur 15 menit.
@@ -14,6 +15,7 @@
 - Structured logging dengan redaction serta audit/security event persistence.
 - Security headers, CSP foundation, public-only service-worker caching.
 - PostgreSQL advisory transaction locks pada child creation dan parent PIN critical sections yang memiliki concurrency risk.
+- Child lifecycle mutation memakai child-scoped lock; delete mengambil parent-scoped lock lebih dahulu untuk menjaga one-active-child invariant.
 - Application tables berada di non-public schemas.
 
 ## Partial controls
