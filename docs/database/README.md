@@ -24,6 +24,10 @@ Application business tables tidak boleh dibuat di `public`.
 
 `RewardLedger`, `EnergyLedger`, dan enum transaction sudah tersedia sebagai schema foundation. Keberadaan model tersebut tidak berarti operational rewards atau energy economy sudah diterapkan.
 
+## Child profile retention
+
+Lifecycle deletion mengisi `ChildProfile.deletedAt`; application flow tidak melakukan hard delete. `GameSession`, `QuestionAttempt`, `LevelProgress`, `TrackProgress`, `DailyPlayUsage`, `RewardLedger`, dan `EnergyLedger` tetap tersimpan untuk kebutuhan internal. Query parent/child operational hanya membaca child dengan `deletedAt: null`. Restore dan parent-facing deleted-child history tidak tersedia.
+
 ## Migration safety
 
 ```bash

@@ -18,8 +18,8 @@ Keterangan: **Auth** berarti authenticated session. **Gate** berarti parent-gate
 | GET       | `/api/v1/children`                                             | `child:read-own`                    | Tidak | Parent profile                        | Implemented | Daftar child profiles                             |
 | POST      | `/api/v1/children`                                             | `child:create`                      | Tidak | Parent id dari session                | Implemented | Membuat child profile                             |
 | GET       | `/api/v1/children/:childId`                                    | `child:read-own`                    | Tidak | Child-parent query                    | Implemented | Detail child profile                              |
-| PATCH     | `/api/v1/children/:childId`                                    | Belum diterapkan                    | Tidak | Intended own child                    | Placeholder | Intended child update                             |
-| DELETE    | `/api/v1/children/:childId`                                    | Belum diterapkan                    | Tidak | Intended own child                    | Placeholder | Intended soft-delete                              |
+| PATCH     | `/api/v1/children/:childId`                                    | `child:update-own`                  | Ya    | Active child-parent query             | Implemented | Partial child profile update                      |
+| DELETE    | `/api/v1/children/:childId`                                    | `child:delete-own`                  | Ya    | Active child-parent query             | Implemented | Soft-delete child dan retain learning history     |
 | GET       | `/api/v1/children/:childId/play-status`                        | Parent                              | Tidak | Child-parent query                    | Implemented | Daily usage/play availability                     |
 | GET       | `/api/v1/children/:childId/adventure-map`                      | `child:read-own`                    | Tidak | Service scopes parent dan child       | Implemented | Tracks, levels, progress, unlock state            |
 | POST      | `/api/v1/children/:childId/game-sessions`                      | `child:read-own`                    | Tidak | Service scopes parent, child, level   | Implemented | Start session dan first question                  |
@@ -46,3 +46,5 @@ Keterangan: **Auth** berarti authenticated session. **Gate** berarti parent-gate
 Adventure APIs di bawah `/api/v1/children/:childId/game-sessions` adalah flow operational. Generic `/api/v1/game-sessions*` adalah placeholder dan tidak boleh digunakan sebagai kontrak aktif.
 
 Request detail yang authoritative tetap berada pada Zod schema dan route handler masing-masing; dokumentasi ini tidak menggantikannya.
+
+PATCH child hanya menerima `nickname`, `birthYear`, `ageRange`, `avatarKey`, dan `learningPreferences.focus`. Peralihan representasi usia wajib mengirim nilai pilihan dan `null` untuk alternatifnya. Missing, foreign, dan soft-deleted child menggunakan response `404` generik yang sama.

@@ -1,7 +1,13 @@
-import { fail, ok, placeholder } from "@/server/errors/api";
+import { updateChildProfileSchema } from "@/features/parent/validation";
+import { fail, ok } from "@/server/errors/api";
 import { requirePermission } from "@/server/auth/session";
-import { NotFoundError } from "@/server/errors/errors";
-import { findChildByIdAndParentId } from "@/server/repositories/childRepository";
+import { NotFoundError, ValidationError } from "@/server/errors/errors";
+import {
+  findChildByIdAndParentId,
+  softDeleteChildForParent,
+  updateChildForParent
+} from "@/server/repositories/childRepository";
+import { requireParentGate } from "@/server/parent-gate/guard";
 
 export async function GET(request: Request, context: { params: Promise<{ childId: string }> }) {
   try {
@@ -19,12 +25,31 @@ export async function GET(request: Request, context: { params: Promise<{ childId
   }
 }
 
-export function PATCH() {
-  return placeholder(
-    "Update an ownership-scoped child profile with child-data minimization rules."
-  );
+export async function PATCH(request: Request, context: { params: Promise<{ childId: string }> }) {
+  try {
+    const user = await requirePermission("child:update-own", request.headers);
+    await requireParentGate(request.headers);
+    if (!user.parentProfileId) throw new NotFoundError();
+    const body = await request.json().catch(() => null);
+    const parsed = updateChildProfileSchema.safeParse(body);
+    if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message);
+    const { childId } = await context.params;
+    const child = await updateChildForParent(user.id, user.parentProfileId, childId, parsed.data);
+    return ok({ child });
+  } catch (error) {
+    return fail(error);
+  }
 }
 
-export function DELETE() {
-  return placeholder("Soft-delete an ownership-scoped child profile and preserve audit history.");
+export async function DELETE(request: Request, context: { params: Promise<{ childId: string }> }) {
+  try {
+    const user = await requirePermission("child:delete-own", request.headers);
+    await requireParentGate(request.headers);
+    if (!user.parentProfileId) throw new NotFoundError();
+    const { childId } = await context.params;
+    await softDeleteChildForParent(user.id, user.parentProfileId, childId);
+    return ok({ deleted: true });
+  } catch (error) {
+    return fail(error);
+  }
 }

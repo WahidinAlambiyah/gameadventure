@@ -2,8 +2,12 @@ import "server-only";
 import type { PrismaClient } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/database/prisma";
-import type { CreateChildProfileInput } from "@/features/parent/validation";
-import { ConflictError } from "@/server/errors/errors";
+import type {
+  CreateChildProfileInput,
+  UpdateChildProfileInput
+} from "@/features/parent/validation";
+import { ConflictError, NotFoundError } from "@/server/errors/errors";
+import { writeAuditEvent } from "@/server/audit/events";
 
 export type ChildSummary = {
   id: string;
@@ -20,6 +24,13 @@ type ChildDbClient = Pick<PrismaClient, "$transaction">;
 
 const testChildren = new Map<string, ChildSummary[]>();
 const testChildLocks = new Map<string, Promise<void>>();
+const testChildAuditEvents: Array<{
+  action: string;
+  actorUserId: string;
+  parentProfileId: string;
+  childId: string;
+  changed?: string[];
+}> = [];
 
 function getTestChildren(parentProfileId: string) {
   if (!testChildren.has(parentProfileId)) testChildren.set(parentProfileId, []);
@@ -29,6 +40,11 @@ function getTestChildren(parentProfileId: string) {
 export function resetTestChildren() {
   testChildren.clear();
   testChildLocks.clear();
+  testChildAuditEvents.length = 0;
+}
+
+export function getTestChildAuditEvents() {
+  return structuredClone(testChildAuditEvents);
 }
 
 export function seedTestChild(child: ChildSummary) {
@@ -41,7 +57,7 @@ function sanitizeChild(child: ChildSummary) {
     parentProfileId: child.parentProfileId,
     nickname: child.nickname,
     birthYear: child.birthYear,
-    ageRange: child.ageRange,
+    ageRange: child.ageRange ?? null,
     avatarKey: child.avatarKey,
     learningPreferences: child.learningPreferences ?? {}
   };
@@ -82,7 +98,9 @@ export async function findChildByIdAndParentId(childId: string, parentProfileId:
       });
     }
 
-    const child = getTestChildren(parentProfileId).find((item) => item.id === childId);
+    const child = getTestChildren(parentProfileId).find(
+      (item) => item.id === childId && !item.deletedAt
+    );
     return child ? sanitizeChild(child) : null;
   }
 
@@ -97,6 +115,7 @@ export async function findChildByIdAndParentId(childId: string, parentProfileId:
       parentProfileId: true,
       nickname: true,
       birthYear: true,
+      ageRange: true,
       avatarKey: true,
       learningPreferences: true
     }
@@ -206,4 +225,129 @@ export async function createChildForParent(
     }
     throw error;
   }
+}
+
+function changedFields(input: UpdateChildProfileInput) {
+  return Object.keys(input);
+}
+
+export async function updateChildForParent(
+  actorUserId: string,
+  parentProfileId: string,
+  childId: string,
+  input: UpdateChildProfileInput
+) {
+  const changed = changedFields(input);
+  if (process.env["APP_ENV"] === "test") {
+    return withTestChildLock(childId, () => {
+      const child = getTestChildren(parentProfileId).find(
+        (item) => item.id === childId && !item.deletedAt
+      );
+      if (!child) throw new NotFoundError();
+      Object.assign(child, input);
+      testChildAuditEvents.push({
+        action: "CHILD_PROFILE_UPDATED",
+        actorUserId,
+        parentProfileId,
+        childId,
+        changed
+      });
+      return sanitizeChild(child);
+    });
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${childId}, 17))::text AS lock_acquired
+    `;
+    const child = await tx.childProfile.findFirst({
+      where: { id: childId, parentProfileId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!child) throw new NotFoundError();
+
+    const updated = await tx.childProfile.update({
+      where: { id: childId },
+      data: {
+        ...input,
+        ...(input.learningPreferences
+          ? { learningPreferences: input.learningPreferences as Prisma.InputJsonValue }
+          : {})
+      },
+      select: {
+        id: true,
+        parentProfileId: true,
+        nickname: true,
+        birthYear: true,
+        ageRange: true,
+        avatarKey: true,
+        learningPreferences: true
+      }
+    });
+    await writeAuditEvent(
+      {
+        actorUserId,
+        parentProfileId,
+        action: "CHILD_PROFILE_UPDATED",
+        targetType: "ChildProfile",
+        targetId: childId,
+        metadata: { parentProfileId, changed }
+      },
+      tx
+    );
+    return updated;
+  });
+}
+
+export async function softDeleteChildForParent(
+  actorUserId: string,
+  parentProfileId: string,
+  childId: string
+) {
+  if (process.env["APP_ENV"] === "test") {
+    return withTestChildLock(parentProfileId, () =>
+      withTestChildLock(childId, () => {
+        const child = getTestChildren(parentProfileId).find(
+          (item) => item.id === childId && !item.deletedAt
+        );
+        if (!child) throw new NotFoundError();
+        child.deletedAt = new Date();
+        testChildAuditEvents.push({
+          action: "CHILD_PROFILE_DELETED",
+          actorUserId,
+          parentProfileId,
+          childId
+        });
+        return { id: childId };
+      })
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${parentProfileId}, 0))::text AS lock_acquired
+    `;
+    await tx.$queryRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${childId}, 17))::text AS lock_acquired
+    `;
+    const child = await tx.childProfile.findFirst({
+      where: { id: childId, parentProfileId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!child) throw new NotFoundError();
+
+    await tx.childProfile.update({ where: { id: childId }, data: { deletedAt: new Date() } });
+    await writeAuditEvent(
+      {
+        actorUserId,
+        parentProfileId,
+        action: "CHILD_PROFILE_DELETED",
+        targetType: "ChildProfile",
+        targetId: childId,
+        metadata: { parentProfileId }
+      },
+      tx
+    );
+    return { id: childId };
+  });
 }

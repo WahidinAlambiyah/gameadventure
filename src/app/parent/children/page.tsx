@@ -29,6 +29,9 @@ export default async function ParentChildrenPage() {
               <p className="mt-2 text-[var(--muted)]">
                 {child.ageRange ? `Age range ${child.ageRange}` : "Birth year saved"}
               </p>
+              <Link className="app-button mt-4" href={`/parent/children/${child.id}`}>
+                Manage profile
+              </Link>
             </article>
           ))}
           {children.length === 0 ? (
