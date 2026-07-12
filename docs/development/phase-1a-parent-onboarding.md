@@ -1,38 +1,24 @@
-# Phase 1A Parent Onboarding
+# Phase 1A — Parent Onboarding
 
-Phase 1A implements the parent onboarding vertical slice.
+Status: **Implemented** melalui PR #3.
 
 ## Flow
 
-1. Parent registers through `/register` with email, password, and display name.
-2. Better Auth creates the auth user and session under `/api/auth`.
-3. The client calls `POST /api/v1/auth/bootstrap-parent`.
-4. The server creates or updates the parent profile, default security setting, default parental setting, and assigns only the `PARENT` role.
-5. Parent creates one active child profile from `/parent/children/new`.
-6. Child selection at `/child/select-profile` lists only child profiles owned by the authenticated parent session.
+1. User register/login melalui Better Auth.
+2. `POST /api/v1/auth/bootstrap-parent` memerlukan authenticated session.
+3. Privileged atau incompatible existing roles ditolak.
+4. Server membuat atau menemukan `ParentProfile`, default `ParentalSetting`, dan assignment role `PARENT` secara idempotent.
+5. Parent dapat membuat satu active MVP child profile; parent id tidak diterima dari request body.
 
-## API Boundaries
+## Security dan persistence
 
-- `GET /api/v1/me` returns the authenticated user, roles, permissions, parent profile id, onboarding status, and active child count.
-- `POST /api/v1/children` validates child data and derives `parentProfileId` from the server session.
-- Client-provided ownership fields are rejected by strict request validation.
-- MVP child creation is limited to one non-deleted child profile per parent.
-- Request validation errors return HTTP `422`.
-- Child nickname is capped at 30 characters.
-- Child age input must include exactly one of birth year or age range.
-- Learning preference is restricted to `reading`, `hijaiyah`, or `both`.
+- Children tetap profiles, bukan auth users.
+- Child queries selalu parent-scoped.
+- Child creation menggunakan advisory transaction lock untuk menjaga invariant concurrent creation.
+- Better Auth password/session data berada di `gameadventure_auth`.
 
-## Security Notes
+## Evidence
 
-- Child profiles are not auth users.
-- Admin-only users are not treated as parents.
-- Parent pages require both the `PARENT` role and a persisted parent profile.
-- Better Auth uses configured field mapping for the existing auth columns rather than editing the applied initial migration.
-- Better Auth enforces password length server-side with a 12-128 character policy.
-- The custom registration UI uses a generic error message to avoid email-existence disclosure.
+Unit tests mencakup onboarding behavior. Integration/security tests mencakup bootstrap, permission, ownership, dan child concurrency; DB-backed concurrency test bersifat opt-in melalui test database.
 
-## Concurrency Test Coverage
-
-- The standard integration suite includes an in-memory simultaneous-create regression test.
-- Set `TEST_DATABASE_URL` to enable the opt-in database-backed concurrency test for the advisory transaction lock.
-- The opt-in test creates unique temporary auth and parent records, performs two concurrent child creates, verifies one active row, and deletes only those temporary records.
+Production email verification dan provider bukan bagian Phase 1A yang selesai.

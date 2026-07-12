@@ -1,130 +1,69 @@
 # BacaNgaji Adventure
 
-BacaNgaji Adventure is a production-oriented boilerplate for a child-friendly learning platform for ages 4-8. It prepares foundations for two learning adventures:
+BacaNgaji Adventure adalah platform belajar ramah anak usia 4–8 tahun. Produk ini menyiapkan petualangan membaca Bahasa Indonesia melalui SastraNusantara dan pengenalan huruf Hijaiyah melalui HijaiyahIsland. Akun dimiliki orang tua; anak direpresentasikan sebagai `ChildProfile`, bukan pengguna autentikasi terpisah.
 
-- SastraNusantara: Bahasa Indonesia reading with direct syllable and phonics methods.
-- HijaiyahIsland: Hijaiyah letters, basic harakat, and early Quran-reading concepts.
+## Status pengembangan
 
-This repository is foundation only. It intentionally does not include full curriculum, paid subscriptions, production assets, advanced analytics, or complete games.
+Fondasi parent onboarding, profil anak, parent gate, pengaturan waktu bermain, adventure map, sesi permainan, question attempt, multi-question progression, level completion, next-level unlock, dan ringkasan progress orang tua sudah tersedia. Rewards, operational energy economy, content administration, beberapa role administratif, storage upload, dan transactional email belum menjadi flow produksi lengkap.
 
-## Architecture Summary
+Status rinci dan buktinya tersedia di [feature status](docs/product/feature-status.md).
 
-The app is a Next.js modular monolith deployed to Vercel behind a custom domain managed in Cloudflare. Supabase is used only for PostgreSQL and Storage. Supabase Auth is not used.
+## Stack terverifikasi
 
-Business tables use PostgreSQL schemas:
+- Node.js 24, Next.js 16 App Router, React 19, dan TypeScript strict.
+- Tailwind CSS 4 untuk UI aplikasi dan Phaser 4 untuk mini-game.
+- Better Auth untuk autentikasi; Supabase Auth tidak digunakan.
+- PostgreSQL melalui Prisma 7 dan `@prisma/adapter-pg`.
+- Supabase hanya disiapkan untuk PostgreSQL dan Storage.
+- Vitest untuk unit/integration/security tests dan Playwright untuk E2E.
 
-- `gameadventure_auth`: Better Auth user/account/session/verification data.
-- `gameadventure`: parent, child, RBAC, content, progress, rewards, energy, and screen-time data.
-- `gameadventure_audit`: audit logs and security events.
-
-No application business table belongs in PostgreSQL `public`.
-
-## Stack
-
-Next.js App Router, React, TypeScript strict mode, Tailwind CSS, Phaser, Prisma, Better Auth, PostgreSQL, Zod, React Hook Form, Vitest, Playwright, ESLint, Prettier, Husky, lint-staged, GitHub Actions, and a PWA manifest/service worker foundation.
-
-## Local Setup
+## Mulai cepat
 
 ```bash
 npm install
-cp .env.example .env
+Copy-Item .env.example .env
 npm run db:generate
 npm run dev
 ```
 
-Use placeholder values locally. Do not commit `.env`.
+Sesuaikan placeholder di `.env` untuk lingkungan lokal dan jangan commit secret. Panduan lengkap tersedia di [SETUP.md](SETUP.md).
 
-## Database Setup
-
-Configure:
-
-- `DATABASE_URL`: pooled runtime connection.
-- `DIRECT_URL`: direct migration connection.
-
-Commands:
-
-```bash
-npm run db:generate
-npm run db:migrate
-npm run db:seed
-```
-
-The seed is development-only and creates roles, permissions, demo users, one demo child, and two placeholder tracks.
-
-## Development Commands
+## Perintah utama
 
 ```bash
 npm run dev
+npm run build
 npm run lint
 npm run typecheck
 npm run test
-npm run build
-```
-
-Testing commands:
-
-```bash
 npm run test:unit
 npm run test:integration
 npm run test:security
 npm run test:e2e
-```
-
-Tests do not require a production database. Database-backed integration should use a disposable test database.
-
-## Deployment Notes
-
-Vercel build command:
-
-```bash
-npm run build
-```
-
-Ensure Prisma client generation runs before build when needed:
-
-```bash
 npm run db:generate
-```
-
-Run production migrations manually with reviewed SQL:
-
-```bash
+npm run db:migrate
 npm run db:deploy
+npm run db:seed
 ```
 
-Do not run production migrations automatically from pull requests.
+## Struktur repository
 
-For Cloudflare, use DNS-only records for the Vercel custom domain unless a reviewed proxy configuration is added.
+```text
+src/app/       Next.js pages dan route handlers
+src/features/  UI dan validasi berbasis fitur
+src/server/    Auth, authorization, persistence, dan business services
+src/game/      Phaser scenes dan mini-game
+prisma/        Schema, migrations, dan development seed
+tests/         Unit, integration, security, dan E2E tests
+docs/          Dokumentasi kanonis dan ADR
+```
 
-## Security Warnings
+## Batas arsitektur dan keamanan
 
-- Do not use Supabase Auth.
-- Do not expose `SUPABASE_SERVICE_ROLE_KEY` to client code.
-- Do not collect child email, phone, exact school, exact location, ID numbers, or unnecessary photos.
-- Do not trust gameplay results sent by the browser.
-- Do not cache authenticated API responses in the service worker.
+- Scoring, correctness, progress, completion, rewards, energy, dan unlock harus server-authoritative.
+- Child data selalu diperiksa dengan permission dan parent ownership.
+- Application business tables tidak boleh dibuat di PostgreSQL `public`.
+- Secret dan `SUPABASE_SERVICE_ROLE_KEY` tidak boleh dikirim ke browser.
+- Phaser hanya menangani gameplay; Next.js menangani aplikasi, navigasi, dan portal.
 
-## Current Scope
-
-Implemented foundations:
-
-- App shell and route placeholders.
-- Better Auth email/password route mounting and parent auth UI.
-- Parent onboarding bootstrap with default settings and `PARENT` role assignment.
-- Custom RBAC helpers with session role and permission hydration.
-- Ownership-scoped child profile list/create/read endpoints.
-- One active MVP child profile per parent account.
-- Prisma schema and initial migration.
-- Ledger-based reward and energy schema.
-- Parent PIN hashing utility.
-- PWA manifest and public-only service worker.
-- Lazy-loaded Phaser demo.
-- CI, docs, ADRs, and initial tests.
-
-Out of scope:
-
-- Complete curriculum.
-- Complete admin CMS.
-- Production email provider.
-- Production game assets.
-- Payment, subscription, analytics, AI tutor, native apps, social features, leaderboard, multiplayer, loot boxes, or real-money game currency.
+Mulai penelusuran dokumentasi dari [docs/README.md](docs/README.md). Keputusan arsitektur historis berada di `docs/architecture/adr/`.
